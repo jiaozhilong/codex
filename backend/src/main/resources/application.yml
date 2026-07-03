@@ -1,0 +1,24 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+spring:
+  application:
+    name: solution-pilot-backend
+  datasource:
+    url: ${SOLUTIONPILOT_DB_URL:jdbc:postgresql://localhost:5432/solutionpilot}
+    username: ${SOLUTIONPILOT_DB_USERNAME:postgres}
+    password: ${SOLUTIONPILOT_DB_PASSWORD:postgis}
+    driver-class-name: org.postgresql.Driver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+solutionpilot:
+  ima:
+    skill-endpoint: https://ima.qq.com/agent-interface
+    skill-key: ${SOLUTIONPILOT_IMA_SKILL_KEY:}

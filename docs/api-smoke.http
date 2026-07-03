@@ -1,0 +1,67 @@
+### Health
+GET http://localhost:8080/api/health
+
+### Decisions
+GET http://localhost:8080/api/decisions
+
+### Login
+POST http://localhost:8080/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@example.com",
+  "password": "admin"
+}
+
+### Model providers
+GET http://localhost:8080/api/model-providers
+
+### Model profiles
+GET http://localhost:8080/api/model-profiles
+
+### ima Skill status
+GET http://localhost:8080/api/ima-skill
+
+### Bind ima Skill
+POST http://localhost:8080/api/ima-skill/bind
+Content-Type: application/json
+
+{
+  "apiKey": "replace-with-your-ima-skill-key",
+  "boundAccount": "your-ima-account"
+}
+
+### Knowledge scopes
+GET http://localhost:8080/api/knowledge-scopes
+
+### Create project
+POST http://localhost:8080/api/projects
+Content-Type: application/json
+
+{
+  "name": "自然资源一张图智能化升级方案",
+  "customerName": "某市自然资源局",
+  "industry": "自然资源",
+  "customerType": "政府",
+  "background": "客户希望整合现有 GIS 平台、业务系统和数据资源。",
+  "rawDemand": "支持二三维一体化展示、专题图层管理、空间分析和业务审批联动。",
+  "existingSystems": "已有基础 GIS 平台、不动产登记系统、规划审批系统。",
+  "budget": "暂未明确",
+  "deliveryTime": "8 周初稿",
+  "knowledgeScopeIds": [],
+  "deliverables": ["WORD", "PPT", "ARCHITECTURE"]
+}
+
+### Projects
+GET http://localhost:8080/api/projects
+
+### Run requirement agent
+POST http://localhost:8080/api/projects/{{projectId}}/agents/requirement/run
+
+### Test ima search
+POST http://localhost:8080/api/ima-skill/test-search
+Content-Type: application/json
+
+{
+  "query": "iPortal 资源授权能力"
+}
