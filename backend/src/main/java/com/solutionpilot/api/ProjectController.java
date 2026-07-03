@@ -9,9 +9,11 @@ import java.util.Map;
 import java.util.UUID;
 import javax.validation.Valid;
 import javax.validation.constraints.NotBlank;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -38,6 +40,17 @@ public class ProjectController {
   @PostMapping
   public ApiResponse<Map<String, Object>> createProject(@Valid @RequestBody ProjectRequest request) {
     return ApiResponse.ok(projectService.createProject(request.toCommand()));
+  }
+
+  @PutMapping("/{id}")
+  public ApiResponse<Map<String, Object>> updateProject(@PathVariable UUID id, @Valid @RequestBody ProjectRequest request) {
+    return ApiResponse.ok(projectService.updateProject(id, request.toCommand()));
+  }
+
+  @DeleteMapping("/{id}")
+  public ApiResponse<String> deleteProject(@PathVariable UUID id) {
+    projectService.deleteProject(id);
+    return ApiResponse.ok("deleted");
   }
 
   public static class ProjectRequest {

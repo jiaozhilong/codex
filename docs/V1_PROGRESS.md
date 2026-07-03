@@ -31,6 +31,15 @@
   - 绑定默认模型
   - 默认绑定全部启用的 ima 知识范围
   - 写入交付物
+- 项目基础 CRUD：
+  - 项目列表、搜索和筛选
+  - 新建项目
+  - 编辑项目基本信息、模型、知识范围和交付物
+  - 删除项目并级联清理关联资产
+- 项目工作台：
+  - 单步运行 Agent
+  - 一键串联运行需求分析、产品匹配、案例推荐、架构设计、方案章节、PPT 页面、方案质检
+  - 查看各类 Agent 产出
 - Agent mock 落表：
   - Requirement Agent -> `requirement_analyses`
   - Product Agent -> `product_matches` + `citations`
@@ -65,8 +74,16 @@ V3 rename USER to WORKER / 牛马专用: success
   "roleCodes": "ADMIN,WORKER",
   "modelCount": 2,
   "projectCreate": "success",
+  "projectUpdate": "success",
+  "projectDelete": "success",
   "agentRunStatus": "COMPLETED",
+  "agentRuns": 7,
   "requirementAnalyses": 1,
+  "productMatches": 1,
+  "caseMatches": 1,
+  "architectures": 1,
+  "proposalSections": 2,
+  "pptPages": 2,
   "htmlOk": true
 }
 ```

@@ -8,6 +8,7 @@ const state = {
   roles: [],
   projects: [],
   project: null,
+  projectMode: "view",
   modelProviders: [],
   modelProfiles: [],
   ima: null,
@@ -15,15 +16,15 @@ const state = {
   skills: [],
 };
 
-const agentLabels = {
-  requirement: "需求分析",
-  product: "产品匹配",
-  case: "案例推荐",
-  architecture: "架构设计",
-  proposal: "方案章节",
-  ppt: "PPT 页面",
-  qa: "方案质检",
-};
+const workflowSteps = [
+  { code: "requirement", label: "需求分析", owner: "Requirement Agent", asset: "requirementAnalyses" },
+  { code: "product", label: "产品匹配", owner: "Product Agent", asset: "productMatches" },
+  { code: "case", label: "案例推荐", owner: "Case Agent", asset: "caseMatches" },
+  { code: "architecture", label: "架构设计", owner: "Architecture Agent", asset: "architectures" },
+  { code: "proposal", label: "方案章节", owner: "Proposal Agent", asset: "proposalSections" },
+  { code: "ppt", label: "PPT 页面", owner: "PPT Agent", asset: "pptPages" },
+  { code: "qa", label: "方案质检", owner: "QA Agent", asset: "agentRuns" },
+];
 
 async function request(path, options = {}) {
   const res = await fetch(api(path), {
@@ -43,10 +44,25 @@ function isAdmin() {
   return (state.user?.roles || []).includes("ADMIN");
 }
 
+function canProjectWrite() {
+  return isAdmin() || (state.user?.roles || []).includes("WORKER");
+}
+
 function roleLabel(code) {
   if (code === "ADMIN") return "管理员";
   if (code === "WORKER") return "牛马专用";
   return code || "-";
+}
+
+function statusLabel(code) {
+  const labels = { DRAFT: "草稿", GENERATED: "已生成", REVIEW: "待审核", DONE: "已完成" };
+  return labels[code] || code || "-";
+}
+
+function statusClass(code) {
+  if (code === "DONE") return "ok";
+  if (code === "GENERATED" || code === "REVIEW") return "warn";
+  return "";
 }
 
 async function boot() {
@@ -78,7 +94,7 @@ function renderLogin() {
       <section class="login-main">
         <div class="brand">
           <div class="brand-mark">SP</div>
-          <div><h1>SolutionPilot V1</h1><span>GIS 方案工程平台</span></div>
+          <div><h1>SolutionPilot</h1><span>GIS 方案工程平台</span></div>
         </div>
         <form class="form" onsubmit="login(event)">
           <div class="field wide">
@@ -89,13 +105,13 @@ function renderLogin() {
             <label>密码</label>
             <input id="password" class="input" type="password" value="admin" />
           </div>
-          <button class="btn primary wide" type="submit">进入 V1 工作台</button>
+          <button class="btn primary wide" type="submit">进入系统</button>
         </form>
       </section>
       <section class="login-side">
-        <span class="chip">V1 本地版</span>
-        <h2>以 ima 知识库为底座，生成可追踪的方案资产。</h2>
-        <p>管理员维护用户、模型和 ima 配置；牛马专用负责创建项目、运行 Agent、查看交付资产。</p>
+        <span class="chip">本地 V1</span>
+        <h2>从客户需求到方案资产，一套可追踪的 AI 工作台。</h2>
+        <p>项目管理、Agent 工作流、大模型配置和 ima 知识库接入都围绕方案交付流程组织。</p>
       </section>
     </main>
     <div id="toast" class="toast"></div>
@@ -113,9 +129,9 @@ async function login(event) {
   });
   state.user = data;
   state.token = data.token;
-  state.view = "dashboard";
   localStorage.setItem("sp.v1.user", JSON.stringify(data));
   localStorage.setItem("sp.v1.token", data.token);
+  state.view = "dashboard";
   await boot();
 }
 
@@ -134,23 +150,23 @@ function renderApp() {
       <aside class="sidebar">
         <div class="brand">
           <div class="brand-mark">SP</div>
-          <div><h1>SolutionPilot</h1><span>V1 本地工作台</span></div>
+          <div><h1>SolutionPilot</h1><span>GIS 方案工程平台</span></div>
         </div>
         <div class="user-box">
           <b>${escapeHtml(state.user.name)}</b>
           <span>${(state.user.roles || []).map(roleLabel).join("，")}</span>
         </div>
         <nav class="nav">
-          ${nav("dashboard", "总览")}
+          ${nav("dashboard", "首页看板")}
           ${nav("project-list", "项目列表")}
-          ${nav("project-manage", "项目管理")}
           ${nav("project-new", "新建项目")}
-          ${isAdmin() ? nav("users", "用户管理") : ""}
+          ${nav("project-manage", "项目工作台")}
+          ${isAdmin() ? nav("users", "用户权限") : ""}
           ${isAdmin() ? nav("models", "大模型配置") : ""}
-          ${isAdmin() ? nav("ima", "ima 配置") : ""}
+          ${isAdmin() ? nav("ima", "ima Skill") : ""}
           ${isAdmin() ? nav("knowledge", "知识范围") : ""}
         </nav>
-        <button class="btn ghost" onclick="logout()">退出</button>
+        <button class="btn ghost dark-button" onclick="logout()">退出登录</button>
       </aside>
       <main class="content">${renderView()}</main>
     </div>
@@ -159,20 +175,24 @@ function renderApp() {
 }
 
 function nav(view, label) {
-  return `<button class="${state.view === view ? "active" : ""}" onclick="setView('${view}')">${label}</button>`;
+  const click = view === "project-manage" ? "openLastProject()" : `setView('${view}')`;
+  return `<button class="${state.view === view ? "active" : ""}" onclick="${click}">${label}</button>`;
 }
 
 async function setView(view) {
   state.view = view;
-  if (view !== "project-manage") state.project = null;
+  if (view !== "project-manage") {
+    state.project = null;
+    state.projectMode = "view";
+  }
   await loadBase();
   renderApp();
 }
 
 function renderView() {
   if (state.view === "project-list") return renderProjectList();
+  if (state.view === "project-new") return renderProjectForm("create");
   if (state.view === "project-manage") return renderProjectManage();
-  if (state.view === "project-new") return renderNewProject();
   if (state.view === "users") return isAdmin() ? renderUsers() : noAccess();
   if (state.view === "models") return isAdmin() ? renderModels() : noAccess();
   if (state.view === "ima") return isAdmin() ? renderIma() : noAccess();
@@ -188,28 +208,27 @@ function noAccess() {
   return `${header("无权限", "当前角色不能访问该页面。")}<section class="panel"><p class="muted">请使用管理员账号登录。</p></section>`;
 }
 
-function metric(label, value) {
-  return `<article class="card metric span-3"><span>${label}</span><strong>${value}</strong></article>`;
+function metric(label, value, desc = "") {
+  return `<article class="card metric span-3"><span>${label}</span><strong>${value}</strong>${desc ? `<p>${desc}</p>` : ""}</article>`;
 }
 
 function renderDashboard() {
+  const running = state.projects.filter((p) => ["DRAFT", "GENERATED", "REVIEW"].includes(p.status)).length;
+  const latest = state.projects.slice(0, 4);
   return `
-    ${header("总览", "V1 本地版已接 PostgreSQL，支持项目创建、管理和 mock Agent 落表。", `<button class="btn primary" onclick="setView('project-new')">新建项目</button>`)}
+    ${header("首页看板", "查看项目进展、待办任务、模型配置和 ima 接入状态。", `<button class="btn primary" onclick="setView('project-new')">新建方案项目</button>`)}
     <section class="grid">
-      ${metric("项目数", state.projects.length)}
-      ${metric("Agent Skills", state.skills.length)}
-      ${metric("模型配置", state.modelProfiles.length)}
-      ${metric("ima 知识范围", state.knowledgeScopes.filter((x) => x.enabled).length)}
+      ${metric("项目总数", state.projects.length, "全部方案项目")}
+      ${metric("进行中", running, "草稿、生成中或待审核")}
+      ${metric("模型配置", state.modelProfiles.length, "OpenAI-compatible")}
+      ${metric("ima 知识范围", state.knowledgeScopes.filter((x) => x.enabled).length, "启用范围")}
       <div class="panel span-7">
-        <div class="panel-title"><div><h3>最近项目</h3><p>点击项目进入管理页</p></div></div>
-        ${projectTable(state.projects.slice(0, 6))}
+        <div class="panel-title"><div><h3>最近项目</h3><p>点击进入项目工作台</p></div></div>
+        <div class="project-grid compact">${latest.map(renderProjectCard).join("") || `<p class="muted">暂无项目。</p>`}</div>
       </div>
       <div class="panel span-5">
-        <div class="panel-title"><div><h3>页面控制</h3><p>按角色展示功能入口</p></div></div>
-        <div class="list">
-          <div class="list-item"><b>管理员</b><div class="muted">用户管理、模型配置、ima 配置、知识范围、项目全功能</div></div>
-          <div class="list-item"><b>牛马专用</b><div class="muted">项目列表、新建项目、项目管理、运行 Agent</div></div>
-        </div>
+        <div class="panel-title"><div><h3>流程状态</h3><p>V1 可串联运行的 Agent</p></div></div>
+        <div class="list">${workflowSteps.map((s) => `<div class="list-item"><b>${s.label}</b><div class="muted">${s.owner}</div></div>`).join("")}</div>
       </div>
     </section>
   `;
@@ -217,29 +236,87 @@ function renderDashboard() {
 
 function renderProjectList() {
   return `
-    ${header("项目列表", "查看所有项目，进入项目管理或新建项目。", `<button class="btn primary" onclick="setView('project-new')">新建项目</button>`)}
-    <section class="panel">
-      <div class="panel-title"><div><h3>全部项目</h3><p>${state.projects.length} 个项目</p></div></div>
-      ${projectTable(state.projects)}
+    ${header("项目列表", "搜索、筛选、打开工作台，也可以编辑或删除项目。", `<button class="btn primary" onclick="setView('project-new')">新建项目</button>`)}
+    <section class="filters">
+      <input id="projectSearch" class="input" placeholder="搜索项目、客户、行业" oninput="filterProjects()" />
+      <select id="statusFilter" class="select" onchange="filterProjects()">
+        <option value="">全部状态</option>
+        <option value="DRAFT">草稿</option>
+        <option value="GENERATED">已生成</option>
+        <option value="REVIEW">待审核</option>
+        <option value="DONE">已完成</option>
+      </select>
+      <select id="industryFilter" class="select" onchange="filterProjects()">
+        <option value="">全部行业</option>
+        ${[...new Set(state.projects.map((p) => p.industry).filter(Boolean))].map((x) => `<option>${escapeHtml(x)}</option>`).join("")}
+      </select>
     </section>
+    <section id="projectGrid" class="project-grid">${state.projects.map(renderProjectCard).join("") || `<div class="panel"><p class="muted">暂无项目。</p></div>`}</section>
   `;
 }
 
-function projectTable(items) {
-  return `<div class="table-wrap"><table><thead><tr><th>项目</th><th>客户</th><th>行业</th><th>状态</th><th>进度</th><th>操作</th></tr></thead><tbody>
-    ${items.map((p) => `<tr>
-      <td>${escapeHtml(p.name)}</td>
-      <td>${escapeHtml(p.customer_name || "")}</td>
-      <td>${escapeHtml(p.industry || "")}</td>
-      <td><span class="chip">${p.status}</span></td>
-      <td>${p.progress || 0}%</td>
-      <td><button class="btn small ghost" onclick="openProject('${p.id}')">管理</button></td>
-    </tr>`).join("") || `<tr><td colspan="6" class="muted">暂无项目</td></tr>`}
-  </tbody></table></div>`;
+function renderProjectCard(p) {
+  const search = `${p.name} ${p.customer_name || ""} ${p.industry || ""}`.toLowerCase();
+  return `
+    <article class="card project-card" data-search="${escapeHtml(search)}" data-status="${escapeHtml(p.status)}" data-industry="${escapeHtml(p.industry || "")}">
+      <div class="meta">
+        <span class="chip">${escapeHtml(p.industry || "未分类")}</span>
+        <span class="chip ${statusClass(p.status)}">${statusLabel(p.status)}</span>
+        <span class="chip">${escapeHtml(p.model_profile_name || "默认模型")}</span>
+      </div>
+      <h3>${escapeHtml(p.name)}</h3>
+      <div class="kv">
+        ${kv("客户", p.customer_name)}
+        ${kv("进度", `${p.progress || 0}%`)}
+        ${kv("创建人", p.creator_name || "-")}
+        ${kv("更新", formatDate(p.updated_at))}
+      </div>
+      <div class="progress"><span style="width:${Number(p.progress || 0)}%"></span></div>
+      <div class="toolbar">
+        <button class="btn primary" onclick="openProject('${p.id}')">打开工作台</button>
+        <button class="btn ghost" onclick="editProject('${p.id}')">编辑</button>
+        <button class="btn danger" onclick="deleteProject('${p.id}', '${escapeAttr(p.name)}')">删除</button>
+      </div>
+    </article>
+  `;
+}
+
+function filterProjects() {
+  const q = document.getElementById("projectSearch").value.trim().toLowerCase();
+  const status = document.getElementById("statusFilter").value;
+  const industry = document.getElementById("industryFilter").value;
+  document.querySelectorAll(".project-card").forEach((card) => {
+    const okSearch = !q || card.dataset.search.includes(q);
+    const okStatus = !status || card.dataset.status === status;
+    const okIndustry = !industry || card.dataset.industry === industry;
+    card.style.display = okSearch && okStatus && okIndustry ? "" : "none";
+  });
+}
+
+async function openLastProject() {
+  if (state.project) {
+    state.view = "project-manage";
+    state.projectMode = "view";
+    renderApp();
+    return;
+  }
+  if (state.projects[0]) {
+    await openProject(state.projects[0].id);
+    return;
+  }
+  await setView("project-new");
 }
 
 async function openProject(id) {
   state.project = await request(`/projects/${id}`);
+  state.projectMode = "view";
+  state.view = "project-manage";
+  renderApp();
+}
+
+async function editProject(id) {
+  state.project = await request(`/projects/${id}`);
+  state.projectMode = "edit";
   state.view = "project-manage";
   renderApp();
 }
@@ -247,21 +324,27 @@ async function openProject(id) {
 function renderProjectManage() {
   if (!state.project) {
     return `
-      ${header("项目管理", "选择一个项目进入工作台。", `<button class="btn primary" onclick="setView('project-new')">新建项目</button>`)}
-      <section class="panel">${projectTable(state.projects)}</section>
+      ${header("项目工作台", "选择一个项目进入需求分析、产品匹配、架构设计和方案生成流程。", `<button class="btn primary" onclick="setView('project-new')">新建项目</button>`)}
+      <section class="project-grid">${state.projects.map(renderProjectCard).join("") || `<div class="panel"><p class="muted">暂无项目。</p></div>`}</section>
     `;
   }
+  if (state.projectMode === "edit") return renderProjectForm("edit", state.project);
   const p = state.project;
   return `
-    ${header("项目管理", `${escapeHtml(p.customer_name)} · ${escapeHtml(p.industry || "")} · ${escapeHtml(p.status)}`, `<button class="btn ghost" onclick="setView('project-list')">返回列表</button>`)}
-    <section class="workspace wide-workspace">
-      <div class="panel">
-        <div class="panel-title"><div><h3>${escapeHtml(p.name)}</h3><p>运行 Agent 后会写入业务资产表</p></div></div>
-        <div class="agent-grid">
-          ${Object.entries(agentLabels).map(([key, label]) => `<button class="btn" onclick="runAgent('${p.id}', '${key}')">${label}</button>`).join("")}
-        </div>
+    ${header(
+      p.name,
+      `${escapeHtml(p.customer_name)} · ${escapeHtml(p.industry || "")} · ${statusLabel(p.status)}`,
+      `<button class="btn ghost" onclick="setView('project-list')">返回列表</button><button class="btn" onclick="editProject('${p.id}')">编辑项目</button><button class="btn primary" onclick="runPipeline('${p.id}')">一键跑通流程</button>`
+    )}
+    <section class="workspace">
+      <aside class="panel steps">
+        <div class="panel-title"><div><h3>Agent 流程</h3><p>单步运行或一键串联</p></div></div>
+        ${workflowSteps.map((s) => renderStepButton(p, s)).join("")}
+      </aside>
+      <section class="panel">
+        <div class="panel-title"><div><h3>交付资产</h3><p>Agent 运行后写入 PostgreSQL 业务表</p></div></div>
         <div class="grid asset-grid">
-          ${asset("Agent Runs", p.agentRuns?.length || 0)}
+          ${asset("运行记录", p.agentRuns?.length || 0)}
           ${asset("需求分析", p.requirementAnalyses?.length || 0)}
           ${asset("产品匹配", p.productMatches?.length || 0)}
           ${asset("案例推荐", p.caseMatches?.length || 0)}
@@ -270,17 +353,28 @@ function renderProjectManage() {
           ${asset("PPT 页面", p.pptPages?.length || 0)}
         </div>
         ${renderProjectAssets(p)}
-      </div>
-      <aside class="panel">
-        <div class="panel-title"><div><h3>项目上下文</h3><p>创建项目时写入</p></div></div>
+      </section>
+      <aside class="panel context-panel">
+        <div class="panel-title"><div><h3>项目上下文</h3><p>用于 Agent 输入</p></div></div>
         <div class="list">
-          <div class="list-item"><b>客户</b><div class="muted">${escapeHtml(p.customer_name)}</div></div>
-          <div class="list-item"><b>行业</b><div class="muted">${escapeHtml(p.industry || "-")}</div></div>
-          <div class="list-item"><b>知识范围</b><div class="muted">${(p.knowledgeScopes || []).map((x) => x.name).join("，") || "-"}</div></div>
-          <div class="list-item"><b>交付物</b><div class="muted">${(p.deliverables || []).map((x) => x.deliverable_type).join("，") || "-"}</div></div>
+          <div class="list-item"><b>背景</b><div class="muted">${escapeHtml(p.background || "-")}</div></div>
+          <div class="list-item"><b>原始需求</b><div class="muted">${escapeHtml(p.raw_demand || "-")}</div></div>
+          <div class="list-item"><b>已有系统</b><div class="muted">${escapeHtml(p.existing_systems || "-")}</div></div>
+          <div class="list-item"><b>知识范围</b><div class="muted">${(p.knowledgeScopes || []).map((x) => escapeHtml(x.name)).join("，") || "-"}</div></div>
+          <div class="list-item"><b>交付物</b><div class="muted">${(p.deliverables || []).map((x) => escapeHtml(x.deliverable_type)).join("，") || "-"}</div></div>
         </div>
       </aside>
     </section>
+  `;
+}
+
+function renderStepButton(p, step) {
+  const count = Array.isArray(p[step.asset]) ? p[step.asset].length : 0;
+  return `
+    <button class="step-button" onclick="runAgent('${p.id}', '${step.code}')">
+      <span><b>${step.label}</b><small>${step.owner}</small></span>
+      <em>${count > 0 ? "已产出" : "未运行"}</em>
+    </button>
   `;
 }
 
@@ -292,8 +386,20 @@ function renderProjectAssets(p) {
   return `
     <div class="asset-sections">
       <section>
+        <h3>需求分析</h3>
+        <div class="list">${(p.requirementAnalyses || []).map((x) => `<div class="list-item"><pre>${escapeHtml(JSON.stringify(x.content_json, null, 2))}</pre></div>`).join("") || `<p class="muted">尚未运行需求分析。</p>`}</div>
+      </section>
+      <section>
         <h3>产品匹配</h3>
         <div class="list">${(p.productMatches || []).map((x) => `<div class="list-item"><b>${escapeHtml(x.product_name)} / ${escapeHtml(x.module_name || "")}</b><div class="muted">${escapeHtml(x.capability)}</div></div>`).join("") || `<p class="muted">尚未运行产品匹配。</p>`}</div>
+      </section>
+      <section>
+        <h3>案例推荐</h3>
+        <div class="list">${(p.caseMatches || []).map((x) => `<div class="list-item"><b>${escapeHtml(x.case_name)}</b><div class="muted">${escapeHtml(x.similarity_reason || "")}</div></div>`).join("") || `<p class="muted">尚未运行案例推荐。</p>`}</div>
+      </section>
+      <section>
+        <h3>架构设计</h3>
+        <div class="list">${(p.architectures || []).map((x) => `<div class="list-item"><b>${escapeHtml(x.content_json?.summary || "技术架构")}</b><pre>${escapeHtml(x.mermaid_text || "")}</pre></div>`).join("") || `<p class="muted">尚未运行架构设计。</p>`}</div>
       </section>
       <section>
         <h3>方案章节</h3>
@@ -307,85 +413,132 @@ function renderProjectAssets(p) {
   `;
 }
 
-function renderNewProject() {
+function renderProjectForm(mode, project = null) {
+  const isEdit = mode === "edit";
+  const selectedScopes = new Set((project?.knowledgeScopes || []).map((x) => String(x.id)));
+  const selectedDeliverables = new Set((project?.deliverables || []).map((x) => x.deliverable_type));
   return `
-    ${header("新建项目", "录入客户需求、选择模型和 ima 知识范围，创建后进入项目管理。")}
-    <form class="panel form" onsubmit="submitProject(event)">
-      ${field("项目名称", "projectName", "input", "如：自然资源一张图智能化升级方案", "wide", true)}
-      ${field("客户名称", "customerName", "input", "客户单位名称", "", true)}
-      ${selectField("行业", "industry", ["自然资源", "智慧园区", "水利", "应急", "交通", "城市运行"])}
-      ${selectField("客户类型", "customerType", ["政府", "企业", "园区", "集团", "事业单位"])}
-      ${selectField("默认模型", "modelProfileId", state.modelProfiles.map((m) => [m.id, `${m.name} · ${m.model_name}`]))}
-      ${field("项目背景", "background", "textarea", "项目背景、政策依据、现状问题", "wide")}
-      ${field("原始需求", "rawDemand", "textarea", "粘贴客户需求、会议纪要或招标片段", "wide", true)}
-      ${field("已有系统", "existingSystems", "textarea", "已有平台、业务系统、数据资源", "wide")}
-      ${field("预算", "budget", "input", "暂未明确")}
-      ${field("交付时间", "deliveryTime", "input", "8 周初稿")}
+    ${header(
+      isEdit ? "编辑项目" : "新建方案项目",
+      "录入客户背景、原始需求、模型配置和 ima 知识库范围。",
+      isEdit ? `<button class="btn ghost" onclick="openProject('${project.id}')">取消编辑</button>` : `<button class="btn ghost" onclick="setView('project-list')">返回列表</button>`
+    )}
+    <form class="panel form" onsubmit="${isEdit ? `submitProjectUpdate(event, '${project.id}')` : "submitProjectCreate(event)"}">
+      ${field("项目名称", "projectName", "input", "如：自然资源一张图智能化升级方案", "wide", true, project?.name)}
+      ${field("客户名称", "customerName", "input", "客户单位名称", "", true, project?.customer_name)}
+      ${selectField("行业", "industry", ["自然资源", "智慧园区", "水利", "应急", "交通", "城市运行", "数字孪生"], project?.industry)}
+      ${selectField("客户类型", "customerType", ["政府", "企业", "园区", "集团", "事业单位"], project?.customer_type)}
+      ${selectField("默认模型", "modelProfileId", state.modelProfiles.map((m) => [m.id, `${m.name} · ${m.model_name}`]), project?.model_profile_id)}
+      ${field("项目背景", "background", "textarea", "项目背景、政策依据、现状问题", "wide", false, project?.background)}
+      ${field("原始需求", "rawDemand", "textarea", "粘贴客户需求、会议纪要或招标片段", "wide", true, project?.raw_demand)}
+      ${field("已有系统", "existingSystems", "textarea", "已有平台、业务系统、数据资源", "wide", false, project?.existing_systems)}
+      ${field("预算", "budget", "input", "暂未明确", "", false, project?.budget)}
+      ${field("交付时间", "deliveryTime", "input", "8 周初稿", "", false, project?.delivery_time)}
       <div class="field wide">
         <label>ima 知识范围</label>
-        <div class="checkboxes">${state.knowledgeScopes.filter((x) => x.enabled).map((x) => `<label class="check-pill"><input type="checkbox" name="knowledgeScopeIds" value="${x.id}" checked />${escapeHtml(x.name)}</label>`).join("")}</div>
+        <div class="checkboxes">
+          ${state.knowledgeScopes.filter((x) => x.enabled).map((x) => `<label class="check-pill"><input type="checkbox" name="knowledgeScopeIds" value="${x.id}" ${!isEdit || selectedScopes.has(String(x.id)) ? "checked" : ""} />${escapeHtml(x.name)}</label>`).join("")}
+        </div>
       </div>
       <div class="field wide">
         <label>交付物</label>
-        <div class="checkboxes">${["WORD", "PPT", "ARCHITECTURE", "PRODUCT_LIST"].map((x) => `<label class="check-pill"><input type="checkbox" name="deliverables" value="${x}" checked />${x}</label>`).join("")}</div>
+        <div class="checkboxes">
+          ${["WORD", "PPT", "ARCHITECTURE", "PRODUCT_LIST", "IMPLEMENTATION_PLAN"].map((x) => `<label class="check-pill"><input type="checkbox" name="deliverables" value="${x}" ${!isEdit || selectedDeliverables.has(x) ? "checked" : ""} />${x}</label>`).join("")}
+        </div>
       </div>
       <div class="toolbar wide">
-        <button class="btn primary" type="submit">创建项目</button>
-        <button class="btn ghost" type="button" onclick="setView('project-list')">取消</button>
+        <button class="btn primary" type="submit">${isEdit ? "保存修改" : "创建并进入工作台"}</button>
+        ${isEdit ? `<button class="btn danger" type="button" onclick="deleteProject('${project.id}', '${escapeAttr(project.name)}')">删除项目</button>` : ""}
       </div>
     </form>
   `;
 }
 
-function field(label, id, type, placeholder, extra = "", required = false) {
+function field(label, id, type, placeholder, extra = "", required = false, value = "") {
   const req = required ? "required" : "";
+  const safe = escapeAttr(value || "");
   const input = type === "textarea"
-    ? `<textarea id="${id}" class="textarea" placeholder="${placeholder}" ${req}></textarea>`
-    : `<input id="${id}" class="input" placeholder="${placeholder}" ${req} />`;
+    ? `<textarea id="${id}" class="textarea" placeholder="${escapeAttr(placeholder)}" ${req}>${escapeHtml(value || "")}</textarea>`
+    : `<input id="${id}" class="input" placeholder="${escapeAttr(placeholder)}" value="${safe}" ${req} />`;
   return `<div class="field ${extra}"><label>${label}</label>${input}</div>`;
 }
 
-function selectField(label, id, options) {
+function selectField(label, id, options, value = "") {
   const normalized = options.map((x) => Array.isArray(x) ? x : [x, x]);
-  return `<div class="field"><label>${label}</label><select id="${id}" class="select">${normalized.map(([value, text]) => `<option value="${value}">${text}</option>`).join("")}</select></div>`;
+  return `<div class="field"><label>${label}</label><select id="${id}" class="select">${normalized.map(([optionValue, text]) => `<option value="${escapeAttr(optionValue)}" ${String(optionValue) === String(value || "") ? "selected" : ""}>${escapeHtml(text)}</option>`).join("")}</select></div>`;
 }
 
-async function submitProject(event) {
+function projectPayload(form) {
+  return {
+    name: document.getElementById("projectName").value,
+    customerName: document.getElementById("customerName").value,
+    industry: document.getElementById("industry").value,
+    customerType: document.getElementById("customerType").value,
+    modelProfileId: document.getElementById("modelProfileId").value || null,
+    background: document.getElementById("background").value,
+    rawDemand: document.getElementById("rawDemand").value,
+    existingSystems: document.getElementById("existingSystems").value,
+    budget: document.getElementById("budget").value,
+    deliveryTime: document.getElementById("deliveryTime").value,
+    knowledgeScopeIds: [...form.querySelectorAll("input[name='knowledgeScopeIds']:checked")].map((x) => x.value),
+    deliverables: [...form.querySelectorAll("input[name='deliverables']:checked")].map((x) => x.value),
+  };
+}
+
+async function submitProjectCreate(event) {
   event.preventDefault();
-  const form = event.target;
-  const knowledgeScopeIds = [...form.querySelectorAll("input[name='knowledgeScopeIds']:checked")].map((x) => x.value);
-  const deliverables = [...form.querySelectorAll("input[name='deliverables']:checked")].map((x) => x.value);
   const data = await request("/projects", {
     method: "POST",
-    body: JSON.stringify({
-      name: document.getElementById("projectName").value,
-      customerName: document.getElementById("customerName").value,
-      industry: document.getElementById("industry").value,
-      customerType: document.getElementById("customerType").value,
-      modelProfileId: document.getElementById("modelProfileId").value || null,
-      background: document.getElementById("background").value,
-      rawDemand: document.getElementById("rawDemand").value,
-      existingSystems: document.getElementById("existingSystems").value,
-      budget: document.getElementById("budget").value,
-      deliveryTime: document.getElementById("deliveryTime").value,
-      knowledgeScopeIds,
-      deliverables,
-    }),
+    body: JSON.stringify(projectPayload(event.target)),
   });
   await loadBase();
   await openProject(data.id);
-  toast("项目已创建");
+  toast("项目已创建，已进入工作台");
+}
+
+async function submitProjectUpdate(event, id) {
+  event.preventDefault();
+  const data = await request(`/projects/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(projectPayload(event.target)),
+  });
+  state.project = data;
+  state.projectMode = "view";
+  await loadBase();
+  renderApp();
+  toast("项目已更新");
+}
+
+async function deleteProject(id, name) {
+  if (!confirm(`确认删除项目「${name}」？相关 Agent 运行和方案资产会一起删除。`)) return;
+  await request(`/projects/${id}`, { method: "DELETE" });
+  state.project = null;
+  state.projectMode = "view";
+  await setView("project-list");
+  toast("项目已删除");
 }
 
 async function runAgent(projectId, skill) {
   await request(`/projects/${projectId}/agents/${skill}/run`, { method: "POST" });
   await openProject(projectId);
-  toast(`${agentLabels[skill] || skill} 已运行`);
+  toast(`${stepLabel(skill)} 已运行`);
+}
+
+async function runPipeline(projectId) {
+  for (const step of workflowSteps) {
+    await request(`/projects/${projectId}/agents/${step.code}/run`, { method: "POST" });
+  }
+  await openProject(projectId);
+  toast("流程已串联跑通");
+}
+
+function stepLabel(code) {
+  return (workflowSteps.find((x) => x.code === code) || {}).label || code;
 }
 
 function renderUsers() {
   return `
-    ${header("用户管理", "管理员可新增用户并调整管理员 / 牛马专用角色。", `<button class="btn primary" onclick="createUser()">新增牛马专用</button>`)}
+    ${header("用户权限", "管理员可新增用户并调整管理员 / 牛马专用角色。", `<button class="btn primary" onclick="createUser()">新增牛马专用</button>`)}
     <section class="grid">
       <div class="panel span-8">
         <div class="table-wrap"><table><thead><tr><th>姓名</th><th>邮箱</th><th>角色</th><th>状态</th><th>调整角色</th></tr></thead><tbody>
@@ -476,7 +629,7 @@ async function submitModel(event) {
 
 function renderIma() {
   return `
-    ${header("ima 配置", "绑定 ima Skill API Key，测试知识库调用。")}
+    ${header("ima Skill", "绑定 ima Skill API Key，测试知识库调用。")}
     <section class="grid">
       <form class="panel form span-5" onsubmit="submitIma(event)">
         <div class="panel-title wide"><div><h3>绑定 ima Skill</h3><p>${state.ima?.endpoint || ""}</p></div></div>
@@ -554,6 +707,15 @@ async function submitKnowledge(event) {
   toast("知识范围已保存");
 }
 
+function kv(label, value) {
+  return `<div class="kv-row"><b>${label}</b><span>${escapeHtml(value || "-")}</span></div>`;
+}
+
+function formatDate(value) {
+  if (!value) return "-";
+  return new Date(value).toLocaleString("zh-CN", { hour12: false });
+}
+
 function toast(message) {
   const el = document.getElementById("toast");
   if (!el) return;
@@ -563,13 +725,23 @@ function toast(message) {
 }
 
 function escapeHtml(value) {
-  return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value).replaceAll("`", "&#096;");
 }
 
 boot().catch((error) => {
   console.error(error);
   localStorage.removeItem("sp.v1.user");
   localStorage.removeItem("sp.v1.token");
+  state.user = null;
   renderLogin();
   toast(error.message);
 });

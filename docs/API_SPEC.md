@@ -122,6 +122,14 @@ Request:
 
 项目详情。
 
+### PUT /projects/{id}
+
+更新项目基本信息、默认模型、ima 知识范围和交付物。
+
+### DELETE /projects/{id}
+
+删除项目。相关知识范围绑定、交付物、工作流运行、Agent 运行和方案资产依赖数据库级联清理。
+
 ## Workflow
 
 ### POST /projects/{id}/agents/{skillCode}/run
@@ -136,3 +144,4 @@ skillCode:
 - `architecture`
 - `proposal`
 - `ppt`
+- `qa`

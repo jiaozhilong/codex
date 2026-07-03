@@ -123,6 +123,59 @@ public class ProjectService {
     return getProject(projectId);
   }
 
+  @Transactional
+  public Map<String, Object> updateProject(UUID id, CreateProjectCommand command) {
+    UUID modelProfileId = command.modelProfileId;
+    if (modelProfileId == null) {
+      modelProfileId = jdbcTemplate.queryForObject("select model_profile_id from projects where id = ?", UUID.class, id);
+    }
+    jdbcTemplate.update(
+        "update projects set name = ?, customer_name = ?, industry = ?, customer_type = ?, background = ?, " +
+            "raw_demand = ?, existing_systems = ?, budget = ?, delivery_time = ?, model_profile_id = ?, updated_at = now() where id = ?",
+        command.name,
+        command.customerName,
+        command.industry,
+        command.customerType,
+        command.background,
+        command.rawDemand,
+        command.existingSystems,
+        command.budget,
+        command.deliveryTime,
+        modelProfileId,
+        id
+    );
+    jdbcTemplate.update("delete from project_knowledge_scopes where project_id = ?", id);
+    List<UUID> scopeIds = command.knowledgeScopeIds;
+    if (scopeIds == null || scopeIds.isEmpty()) {
+      scopeIds = jdbcTemplate.queryForList("select id from knowledge_scopes where enabled = true order by created_at", UUID.class);
+    }
+    for (UUID scopeId : scopeIds) {
+      jdbcTemplate.update(
+          "insert into project_knowledge_scopes(project_id, knowledge_scope_id) values (?, ?) on conflict do nothing",
+          id,
+          scopeId
+      );
+    }
+    jdbcTemplate.update("delete from project_deliverables where project_id = ?", id);
+    List<String> deliverables = command.deliverables;
+    if (deliverables == null || deliverables.isEmpty()) {
+      deliverables = List.of("WORD", "PPT", "ARCHITECTURE");
+    }
+    for (String deliverable : deliverables) {
+      jdbcTemplate.update(
+          "insert into project_deliverables(project_id, deliverable_type, enabled) values (?, ?, true)",
+          id,
+          deliverable
+      );
+    }
+    return getProject(id);
+  }
+
+  @Transactional
+  public void deleteProject(UUID id) {
+    jdbcTemplate.update("delete from projects where id = ?", id);
+  }
+
   public static class CreateProjectCommand {
     public String name;
     public String customerName;
