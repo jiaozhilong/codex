@@ -23,6 +23,9 @@
   - 模型配置
   - ima Skill
   - 知识范围
+- 配置联调：
+  - 大模型配置支持 OpenAI-compatible `/chat/completions` 实际调用测试
+  - ima Skill 支持账号/API Key 保存、调用指令生成和 endpoint probe
 - 角色：
   - 管理员
   - 牛马专用
@@ -84,6 +87,8 @@ V3 rename USER to WORKER / 牛马专用: success
   "architectures": 1,
   "proposalSections": 2,
   "pptPages": 2,
+  "modelConfigTest": "success with local OpenAI-compatible mock",
+  "imaConfigTest": "configured + endpoint probe attempted",
   "htmlOk": true
 }
 ```
@@ -91,5 +96,5 @@ V3 rename USER to WORKER / 牛马专用: success
 ## 下一步
 
 - 把 mock Agent 输出替换为 `SkillRegistry + ModelProviderAdapter`
-- Product Agent 接入真实 `KnowledgeService -> ima Skill`
+- Product Agent 接入已配置模型和 `KnowledgeService -> ima Skill`
 - 增加 Word/PPT 导出任务骨架

@@ -63,6 +63,18 @@ Request:
 
 更新模型配置。
 
+### POST /model-profiles/{id}/test
+
+使用已保存的 API Key 调用 OpenAI-compatible `/chat/completions`，验证该模型配置是否可用。
+
+Request:
+
+```json
+{
+  "prompt": "请用三句话说明自然资源一张图平台的方案价值。"
+}
+```
+
 ## ima Skill
 
 ### GET /ima-skill
@@ -84,6 +96,8 @@ Request:
 ### POST /ima-skill/test-search
 
 测试检索。
+
+V1 会读取已绑定的 API Key，生成可交给支持 ima skill 的模型执行的自然语言调用指令，并尝试向 `solutionpilot.ima.skill-endpoint` 发送 HTTP probe。若 ima 官方未开放稳定 REST search 协议，HTTP probe 不代表最终 skill 调用能力，最终以支持 skill 的模型环境执行结果为准。
 
 Request:
 

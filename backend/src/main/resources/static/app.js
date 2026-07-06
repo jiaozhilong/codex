@@ -12,6 +12,8 @@ const state = {
   modelProviders: [],
   modelProfiles: [],
   ima: null,
+  imaTestResult: null,
+  modelTestResult: null,
   knowledgeScopes: [],
   skills: [],
 };
@@ -591,9 +593,15 @@ function renderModels() {
     ${header("大模型配置", "配置 OpenAI-compatible 模型，后续供 Agent 调用。")}
     <section class="grid">
       <div class="panel span-8">
-        <div class="table-wrap"><table><thead><tr><th>名称</th><th>供应商</th><th>模型</th><th>API Base</th><th>用途</th><th>状态</th></tr></thead><tbody>
-        ${state.modelProfiles.map((m) => `<tr><td>${escapeHtml(m.name)}</td><td>${escapeHtml(m.provider_name)}</td><td>${escapeHtml(m.model_name)}</td><td>${escapeHtml(m.api_base)}</td><td>${escapeHtml(m.use_for || "")}</td><td><span class="chip warn">${m.status}</span></td></tr>`).join("")}
+        <div class="panel-title"><div><h3>模型列表</h3><p>测试会真实请求 API Base 的 /chat/completions</p></div></div>
+        <div class="field">
+          <label>业务场景测试 Prompt</label>
+          <textarea id="modelTestPrompt" class="textarea">你是 GIS 解决方案助手。请用三句话给出“自然资源一张图平台”的方案价值、核心能力和交付注意事项。</textarea>
+        </div>
+        <div class="table-wrap model-table"><table><thead><tr><th>名称</th><th>供应商</th><th>模型</th><th>API Base</th><th>用途</th><th>状态</th><th>测试</th></tr></thead><tbody>
+        ${state.modelProfiles.map((m) => `<tr><td>${escapeHtml(m.name)}</td><td>${escapeHtml(m.provider_name)}</td><td>${escapeHtml(m.model_name)}</td><td>${escapeHtml(m.api_base)}</td><td>${escapeHtml(m.use_for || "")}</td><td><span class="chip ${m.status === "READY" ? "ok" : m.status === "ERROR" ? "danger-chip" : "warn"}">${m.status}</span></td><td><button class="btn small" onclick="testModel('${m.id}')">测试调用</button></td></tr>`).join("")}
         </tbody></table></div>
+        ${state.modelTestResult ? renderJsonResult("模型测试结果", state.modelTestResult) : ""}
       </div>
       <form class="panel form span-4" onsubmit="submitModel(event)">
         <div class="panel-title wide"><div><h3>新增模型</h3><p>API Key 后端会加密占位保存</p></div></div>
@@ -627,24 +635,49 @@ async function submitModel(event) {
   toast("模型配置已保存");
 }
 
+async function testModel(id) {
+  const prompt = document.getElementById("modelTestPrompt")?.value || "";
+  try {
+    state.modelTestResult = await request(`/model-profiles/${id}/test`, {
+      method: "POST",
+      body: JSON.stringify({ prompt }),
+    });
+    await loadBase();
+    renderApp();
+    toast(state.modelTestResult.success ? "模型测试成功" : "模型返回错误");
+  } catch (error) {
+    state.modelTestResult = { success: false, error: error.message };
+    renderApp();
+    toast("模型测试失败");
+  }
+}
+
 function renderIma() {
   return `
-    ${header("ima Skill", "绑定 ima Skill API Key，测试知识库调用。")}
+    ${header("ima Skill", "绑定 ima Skill API Key，生成 skill 调用指令并检测 endpoint。")}
     <section class="grid">
       <form class="panel form span-5" onsubmit="submitIma(event)">
         <div class="panel-title wide"><div><h3>绑定 ima Skill</h3><p>${state.ima?.endpoint || ""}</p></div></div>
         ${field("绑定账号", "imaAccount", "input", "ima 账号 / 备注", "wide")}
         ${field("API Key", "imaKey", "input", "从 ima agent-interface 获取", "wide", true)}
         <button class="btn primary wide" type="submit">保存绑定</button>
-        <button class="btn wide" type="button" onclick="testIma()">测试检索</button>
+        <div class="field wide">
+          <label>检索测试问题</label>
+          <textarea id="imaQuery" class="textarea">帮我查询 SuperMap iPortal 在资源注册、检索、授权和共享方面的能力。</textarea>
+        </div>
+        <button class="btn wide" type="button" onclick="testIma()">测试 ima 调用</button>
       </form>
       <div class="panel span-7">
-        <div class="panel-title"><div><h3>状态与能力</h3><p>V1 启用检索、读取和引用</p></div></div>
+        <div class="panel-title"><div><h3>状态与能力</h3><p>按 ima Skill API Key 方式接入</p></div></div>
         <div class="list">
           <div class="list-item"><b>状态</b><div class="muted">${state.ima?.bound ? "已绑定" : "未绑定"}</div></div>
+          <div class="list-item"><b>绑定账号</b><div class="muted">${escapeHtml(state.ima?.binding?.bound_account || "-")}</div></div>
+          <div class="list-item"><b>API Key</b><div class="muted">${escapeHtml(state.ima?.binding?.apiKeyMasked || "未配置")}</div></div>
+          <div class="list-item"><b>接入方式</b><div class="muted">${escapeHtml(state.ima?.integrationMode || "")}</div></div>
           <div class="list-item"><b>禁用来源</b><div class="muted">${state.ima?.disabledSources || ""}</div></div>
           ${(state.ima?.capabilities || []).map((x) => `<div class="list-item">${x}</div>`).join("")}
         </div>
+        ${state.imaTestResult ? renderJsonResult("ima 测试结果", state.imaTestResult) : ""}
       </div>
     </section>
   `;
@@ -666,9 +699,22 @@ async function submitIma(event) {
 async function testIma() {
   const data = await request("/ima-skill/test-search", {
     method: "POST",
-    body: JSON.stringify({ query: "iPortal 资源授权能力" }),
+    body: JSON.stringify({ query: document.getElementById("imaQuery")?.value || "iPortal 资源授权能力" }),
   });
+  state.imaTestResult = data;
+  renderApp();
   toast(data.summary);
+}
+
+function renderJsonResult(title, data) {
+  return `
+    <div class="result-box">
+      <h3>${escapeHtml(title)}</h3>
+      ${data.answer ? `<div class="list-item"><b>模型回答</b><div class="muted">${escapeHtml(data.answer)}</div></div>` : ""}
+      ${data.instruction ? `<div class="list-item"><b>ima 调用指令</b><div class="muted">${escapeHtml(data.instruction)}</div></div>` : ""}
+      <pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+    </div>
+  `;
 }
 
 function renderKnowledge() {

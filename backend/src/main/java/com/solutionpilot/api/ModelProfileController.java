@@ -46,6 +46,23 @@ public class ModelProfileController {
     return ApiResponse.ok("updated");
   }
 
+  @PostMapping("/model-profiles/{id}/test")
+  public ApiResponse<Map<String, Object>> testProfile(@PathVariable UUID id, @RequestBody ModelTestRequest request) {
+    return ApiResponse.ok(modelProfileService.testProfile(id, request == null ? null : request.getPrompt()));
+  }
+
+  public static class ModelTestRequest {
+    private String prompt;
+
+    public String getPrompt() {
+      return prompt;
+    }
+
+    public void setPrompt(String prompt) {
+      this.prompt = prompt;
+    }
+  }
+
   public static class ModelProfileRequest {
     @NotBlank
     private String providerCode;

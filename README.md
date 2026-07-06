@@ -65,6 +65,7 @@ user@example.com / user
 - `GET /api/model-profiles`
 - `POST /api/model-profiles`
 - `PUT /api/model-profiles/{id}`
+- `POST /api/model-profiles/{id}/test`
 - `GET /api/ima-skill`
 - `POST /api/ima-skill/bind`
 - `POST /api/ima-skill/test-search`
@@ -88,14 +89,14 @@ user@example.com / user
 
 待接入：
 
-- 真实 ima Skill 检索
-- 真实大模型调用
+- ima Skill 在支持 skill 的模型环境内真实执行检索
+- 更多模型供应商的响应格式兼容
 - Word/PPT 模板导出
 
 ## Decided Scope
 
 - MVP 知识底座只接 ima 知识库。
-- 通过 ima Skill API Key 绑定 ima 账号。
+- 通过 ima Skill API Key 绑定 ima 账号；页面保存账号和 API Key，并生成 skill 调用指令与 endpoint 检测结果。
 - 企业微信知识社区、个人电脑本地文档、网盘资料直连暂不接入。
 - 权限只保留管理员和普通用户。
 - PPT 按用户提供的 PPTX 模板生成，Agent 只生成结构化页面内容。

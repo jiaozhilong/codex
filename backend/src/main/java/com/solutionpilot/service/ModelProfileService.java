@@ -1,5 +1,12 @@
 package com.solutionpilot.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -10,9 +17,15 @@ import org.springframework.stereotype.Service;
 @Service
 public class ModelProfileService {
   private final JdbcTemplate jdbcTemplate;
+  private final ObjectMapper objectMapper;
+  private final HttpClient httpClient;
 
-  public ModelProfileService(JdbcTemplate jdbcTemplate) {
+  public ModelProfileService(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
     this.jdbcTemplate = jdbcTemplate;
+    this.objectMapper = objectMapper;
+    this.httpClient = HttpClient.newBuilder()
+        .connectTimeout(java.time.Duration.ofSeconds(15))
+        .build();
   }
 
   public List<Map<String, Object>> listProfiles() {
@@ -74,6 +87,79 @@ public class ModelProfileService {
         command.status == null ? "PENDING" : command.status,
         id
     );
+  }
+
+  public Map<String, Object> testProfile(UUID id, String prompt) {
+    Map<String, Object> profile = jdbcTemplate.queryForMap(
+        "select mp.id, mp.name, mp.model_name, mp.api_base, mp.api_key_encrypted, p.code as provider_code " +
+            "from model_profiles mp join model_providers p on p.id = mp.provider_id where mp.id = ?",
+        id
+    );
+    String apiKey = decrypt((String) profile.get("api_key_encrypted"));
+    if (apiKey == null || apiKey.isBlank()) {
+      throw new IllegalStateException("Model API Key is empty. Please save API Key first.");
+    }
+    String apiBase = String.valueOf(profile.get("api_base"));
+    String endpoint = chatCompletionsEndpoint(apiBase);
+    String userPrompt = prompt == null || prompt.isBlank()
+        ? "用一句中文说明你已经可以用于 SolutionPilot 方案生成。"
+        : prompt;
+    try {
+      Map<String, Object> message = new LinkedHashMap<>();
+      message.put("role", "user");
+      message.put("content", userPrompt);
+
+      Map<String, Object> body = new LinkedHashMap<>();
+      body.put("model", profile.get("model_name"));
+      body.put("messages", List.of(message));
+      body.put("temperature", 0.2);
+      body.put("max_tokens", 300);
+
+      HttpRequest request = HttpRequest.newBuilder()
+          .uri(URI.create(endpoint))
+          .timeout(java.time.Duration.ofSeconds(45))
+          .header("Content-Type", "application/json")
+          .header("Authorization", "Bearer " + apiKey)
+          .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body), StandardCharsets.UTF_8))
+          .build();
+      HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+      Map<String, Object> result = new LinkedHashMap<>();
+      result.put("endpoint", endpoint);
+      result.put("httpStatus", response.statusCode());
+      result.put("success", response.statusCode() >= 200 && response.statusCode() < 300);
+      result.put("prompt", userPrompt);
+      result.put("raw", response.body());
+      if (response.statusCode() >= 200 && response.statusCode() < 300) {
+        JsonNode json = objectMapper.readTree(response.body());
+        JsonNode content = json.path("choices").path(0).path("message").path("content");
+        result.put("answer", content.isMissingNode() ? response.body() : content.asText());
+        jdbcTemplate.update("update model_profiles set status = 'READY', updated_at = now() where id = ?", id);
+      } else {
+        jdbcTemplate.update("update model_profiles set status = 'ERROR', updated_at = now() where id = ?", id);
+      }
+      return result;
+    } catch (Exception ex) {
+      jdbcTemplate.update("update model_profiles set status = 'ERROR', updated_at = now() where id = ?", id);
+      throw new IllegalStateException("Model test failed: " + ex.getMessage(), ex);
+    }
+  }
+
+  private String chatCompletionsEndpoint(String apiBase) {
+    String base = apiBase == null ? "" : apiBase.trim();
+    while (base.endsWith("/")) {
+      base = base.substring(0, base.length() - 1);
+    }
+    if (base.endsWith("/chat/completions")) {
+      return base;
+    }
+    return base + "/chat/completions";
+  }
+
+  private String decrypt(String value) {
+    if (value == null) {
+      return null;
+    }
+    return value.startsWith("encrypted:") ? value.substring("encrypted:".length()) : value;
   }
 
   public static class CreateModelProfileCommand {

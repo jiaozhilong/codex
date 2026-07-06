@@ -421,6 +421,11 @@ th {
   color: #92400e;
 }
 
+.chip.danger-chip {
+  background: #fee4e2;
+  color: var(--danger);
+}
+
 .muted {
   color: var(--muted);
 }
@@ -584,6 +589,23 @@ th {
   border-radius: 8px;
   background: #ffffff;
   padding: 12px;
+}
+
+.model-table {
+  margin-top: 12px;
+}
+
+.result-box {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 12px;
+}
+
+.result-box h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
 }
 
 pre {
