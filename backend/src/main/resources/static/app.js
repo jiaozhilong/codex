@@ -364,6 +364,7 @@ function renderProjectManage() {
           ${asset("方案章节", p.proposalSections?.length || 0)}
           ${asset("PPT 页面", p.pptPages?.length || 0)}
         </div>
+        ${renderDeliverables(p)}
         ${renderProjectAssets(p)}
       </section>
       <aside class="panel context-panel">
@@ -392,6 +393,31 @@ function renderStepButton(p, step) {
 
 function asset(label, value) {
   return `<article class="card metric span-3"><span>${label}</span><strong>${value}</strong></article>`;
+}
+
+function renderDeliverables(p) {
+  const generated = (p.proposalSections?.length || 0) + (p.pptPages?.length || 0) + (p.architectures?.length || 0);
+  return `
+    <section class="deliverables">
+      <div class="panel-title"><div><h3>交付物下载</h3><p>${generated > 0 ? "可下载当前已生成内容" : "先运行 Agent 流程生成方案内容"}</p></div></div>
+      <div class="deliverable-grid">
+        ${deliverableButton("方案 Markdown", "完整方案正文", "downloadMarkdown", generated > 0)}
+        ${deliverableButton("Word 兼容文档", "可用 Word 打开的 .doc", "downloadWord", generated > 0)}
+        ${deliverableButton("PPT 大纲", "页面标题、类型和要点", "downloadPptMarkdown", (p.pptPages?.length || 0) > 0)}
+        ${deliverableButton("架构图代码", "Mermaid 架构图文本", "downloadMermaid", (p.architectures?.length || 0) > 0)}
+        ${deliverableButton("项目上下文 JSON", "完整项目和生成资产", "downloadJson", true)}
+      </div>
+    </section>
+  `;
+}
+
+function deliverableButton(title, desc, action, enabled) {
+  return `
+    <button class="download-card" onclick="${enabled ? `${action}()` : ""}" ${enabled ? "" : "disabled"}>
+      <b>${title}</b>
+      <span>${desc}</span>
+    </button>
+  `;
 }
 
 function renderProjectAssets(p) {
@@ -712,10 +738,11 @@ function renderIma() {
           <div class="list-item"><b>绑定账号</b><div class="muted">${escapeHtml(state.ima?.binding?.bound_account || "-")}</div></div>
           <div class="list-item"><b>API Key</b><div class="muted">${escapeHtml(state.ima?.binding?.apiKeyMasked || "未配置")}</div></div>
           <div class="list-item"><b>接入方式</b><div class="muted">${escapeHtml(state.ima?.integrationMode || "")}</div></div>
+          <div class="list-item"><b>远端订阅库读取</b><div class="muted">${escapeHtml(state.ima?.remoteSubscriptionStatus?.message || "-")}</div></div>
           <div class="list-item"><b>禁用来源</b><div class="muted">${state.ima?.disabledSources || ""}</div></div>
           ${(state.ima?.capabilities || []).map((x) => `<div class="list-item">${x}</div>`).join("")}
         </div>
-        <div class="panel-title subscriptions-title"><div><h3>订阅库列表</h3><p>当前从 ima 配置和知识范围识别到的可用订阅库</p></div></div>
+        <div class="panel-title subscriptions-title"><div><h3>知识库范围映射</h3><p>${escapeHtml(state.ima?.subscriptionSource || "本地维护的 ima 知识范围")}</p></div><button class="btn ghost" onclick="setView('knowledge')">新增范围</button></div>
         <div class="list">
           ${(state.ima?.subscriptions || []).map((s) => `<div class="list-item"><b>${escapeHtml(s.name)}</b><div class="muted">${escapeHtml(s.type)} · ${escapeHtml(s.status)} · ${escapeHtml(s.scope_prompt || "")}</div></div>`).join("") || `<div class="list-item muted">暂无订阅库</div>`}
         </div>
@@ -839,6 +866,115 @@ async function submitKnowledge(event) {
   });
   await setView("knowledge");
   toast("知识范围已保存");
+}
+
+function selectedProject() {
+  if (!state.project) throw new Error("请先打开一个项目工作台");
+  return state.project;
+}
+
+function buildMarkdown(p) {
+  const requirement = (p.requirementAnalyses || [])
+    .map((x) => `\n\`\`\`json\n${JSON.stringify(x.content_json || {}, null, 2)}\n\`\`\``)
+    .join("\n");
+  const products = (p.productMatches || [])
+    .map((x) => `- ${x.product_name || "产品能力"}${x.module_name ? ` / ${x.module_name}` : ""}：${x.capability || ""}`)
+    .join("\n");
+  const cases = (p.caseMatches || [])
+    .map((x) => `- ${x.case_name || "案例"}：${x.similarity_reason || ""}`)
+    .join("\n");
+  const architectures = (p.architectures || [])
+    .map((x) => `### ${x.content_json?.summary || "技术架构"}\n\n\`\`\`mermaid\n${x.mermaid_text || ""}\n\`\`\``)
+    .join("\n\n");
+  const sections = (p.proposalSections || [])
+    .map((x) => `## ${x.title}\n${x.content_markdown || ""}`)
+    .join("\n\n");
+
+  return `# ${p.name}
+
+客户：${p.customer_name || "-"}
+行业：${p.industry || "-"}
+客户类型：${p.customer_type || "-"}
+交付时间：${p.delivery_time || "-"}
+
+## 项目背景
+${p.background || "-"}
+
+## 原始需求
+${p.raw_demand || "-"}
+
+## 已有系统
+${p.existing_systems || "-"}
+
+## 需求分析
+${requirement || "尚未生成"}
+
+## 产品匹配
+${products || "尚未生成"}
+
+## 案例推荐
+${cases || "尚未生成"}
+
+## 技术架构
+${architectures || "尚未生成"}
+
+${sections || "## 方案正文\n尚未生成"}
+`;
+}
+
+function markdownToWordHtml(markdown, title) {
+  const body = markdown.split("\n").map((line) => {
+    if (line.startsWith("# ")) return `<h1>${escapeHtml(line.slice(2))}</h1>`;
+    if (line.startsWith("## ")) return `<h2>${escapeHtml(line.slice(3))}</h2>`;
+    if (line.startsWith("### ")) return `<h3>${escapeHtml(line.slice(4))}</h3>`;
+    if (line.startsWith("- ")) return `<p>• ${escapeHtml(line.slice(2))}</p>`;
+    if (line.startsWith("```")) return "";
+    return line.trim() ? `<p>${escapeHtml(line)}</p>` : "<p></p>";
+  }).join("");
+  return `<html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>body{font-family:Microsoft YaHei,Arial,sans-serif;line-height:1.7;color:#111827}h1,h2,h3{color:#0f172a}p{margin:6px 0}</style></head><body>${body}</body></html>`;
+}
+
+function downloadMarkdown() {
+  const p = selectedProject();
+  download(`${safeFilename(p.name)}.md`, buildMarkdown(p), "text/markdown;charset=utf-8");
+}
+
+function downloadWord() {
+  const p = selectedProject();
+  download(`${safeFilename(p.name)}.doc`, markdownToWordHtml(buildMarkdown(p), p.name), "application/msword;charset=utf-8");
+}
+
+function downloadPptMarkdown() {
+  const p = selectedProject();
+  const text = (p.pptPages || []).map((x) => `## ${x.sort_order || ""}. ${x.title || "PPT 页面"}\n- 页面类型：${x.page_type || "-"}\n- 页面要点：${JSON.stringify(x.content_json || {}, null, 2)}`).join("\n\n");
+  download(`${safeFilename(p.name)}-PPT大纲.md`, text || "尚未生成 PPT 页面", "text/markdown;charset=utf-8");
+}
+
+function downloadMermaid() {
+  const p = selectedProject();
+  const text = (p.architectures || []).map((x) => x.mermaid_text || "").filter(Boolean).join("\n\n");
+  download(`${safeFilename(p.name)}-architecture.mmd`, text || "graph TD\n  A[尚未生成架构图]", "text/plain;charset=utf-8");
+}
+
+function downloadJson() {
+  const p = selectedProject();
+  download(`${safeFilename(p.name)}-context.json`, JSON.stringify(p, null, 2), "application/json;charset=utf-8");
+}
+
+function download(filename, content, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function safeFilename(name) {
+  return String(name || "solution-pilot").replace(/[\\/:*?"<>|]/g, "_");
 }
 
 function kv(label, value) {

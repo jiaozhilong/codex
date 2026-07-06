@@ -43,6 +43,8 @@ public class ImaSkillService {
     payload.put("disabledSources", "wecom knowledge community, local desktop documents, cloud drive direct access");
     payload.put("integrationMode", "ima Skill API Key. Public docs describe binding the key to an ima account and invoking the skill from a model/tool environment; no stable public REST search contract is documented.");
     payload.put("capabilities", capabilities());
+    payload.put("subscriptionSource", "本地维护的 ima 知识范围映射。当前公开接入说明没有提供按账号读取已订阅知识库列表的 REST 接口。");
+    payload.put("remoteSubscriptionStatus", remoteSubscriptionStatus());
     payload.put("subscriptions", subscriptions());
     return payload;
   }
@@ -53,9 +55,19 @@ public class ImaSkillService {
     );
     for (Map<String, Object> scope : scopes) {
       scope.put("source", "ima_skill_configured_scope");
+      scope.put("sourceLabel", "本地知识范围映射");
       scope.put("status", Boolean.TRUE.equals(scope.get("enabled")) ? "AVAILABLE" : "DISABLED");
     }
     return scopes;
+  }
+
+  private Map<String, Object> remoteSubscriptionStatus() {
+    Map<String, Object> status = new LinkedHashMap<>();
+    status.put("readable", false);
+    status.put("endpoint", properties.getSkillEndpoint());
+    status.put("message", "未发现 ima 对外开放的账号订阅库列表 API；V1 使用本地知识范围维护可检索边界。");
+    status.put("nextStep", "如果后续拿到 ima 官方 subscriptions/list 接口文档，可以直接在这里替换为真实同步。");
+    return status;
   }
 
   public Map<String, Object> bind(String apiKey, String boundAccount) {

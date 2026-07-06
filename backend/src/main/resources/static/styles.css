@@ -572,6 +572,59 @@ th {
   margin-bottom: 14px;
 }
 
+.deliverables {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 12px;
+  margin-bottom: 14px;
+}
+
+.deliverable-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.download-card {
+  min-height: 86px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  text-align: left;
+  padding: 12px;
+  cursor: pointer;
+  transition: 0.16s ease;
+}
+
+.download-card:hover:not(:disabled) {
+  border-color: var(--brand);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
+}
+
+.download-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.download-card b,
+.download-card span {
+  display: block;
+}
+
+.download-card b {
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+.download-card span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .asset-sections {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
