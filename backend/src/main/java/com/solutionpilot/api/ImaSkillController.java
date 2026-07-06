@@ -37,7 +37,12 @@ public class ImaSkillController {
 
   @PostMapping("/bind")
   public ApiResponse<Map<String, Object>> bind(@Valid @RequestBody BindRequest request) {
-    return ApiResponse.ok(imaSkillService.bind(request.getApiKey(), request.getBoundAccount()));
+    return ApiResponse.ok(imaSkillService.bind(request.getApiKey(), request.getClientId(), request.getBoundAccount()));
+  }
+
+  @PostMapping("/sync-subscriptions")
+  public ApiResponse<Map<String, Object>> syncSubscriptions() {
+    return ApiResponse.ok(imaSkillService.syncSubscriptions());
   }
 
   public static class TestSearchRequest {
@@ -56,6 +61,8 @@ public class ImaSkillController {
   public static class BindRequest {
     @NotBlank
     private String apiKey;
+    @NotBlank
+    private String clientId;
     private String boundAccount;
 
     public String getApiKey() {
@@ -64,6 +71,14 @@ public class ImaSkillController {
 
     public void setApiKey(String apiKey) {
       this.apiKey = apiKey;
+    }
+
+    public String getClientId() {
+      return clientId;
+    }
+
+    public void setClientId(String clientId) {
+      this.clientId = clientId;
     }
 
     public String getBoundAccount() {

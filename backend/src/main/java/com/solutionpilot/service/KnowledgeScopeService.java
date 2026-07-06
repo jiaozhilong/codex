@@ -17,7 +17,7 @@ public class KnowledgeScopeService {
 
   public List<Map<String, Object>> listScopes() {
     return jdbcTemplate.queryForList(
-        "select id, name, type, owner, scope_prompt, enabled, last_verified_at from knowledge_scopes order by created_at"
+        "select id, name, type, owner, scope_prompt, enabled, external_id, source, cover_url, last_verified_at from knowledge_scopes order by source desc, created_at"
     );
   }
 

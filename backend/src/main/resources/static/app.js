@@ -723,6 +723,7 @@ function renderIma() {
       <form class="panel form span-5" onsubmit="submitIma(event)">
         <div class="panel-title wide"><div><h3>绑定 ima Skill</h3><p>${state.ima?.endpoint || ""}</p></div></div>
         ${field("绑定账号", "imaAccount", "input", "ima 账号 / 备注", "wide")}
+        ${field("Client ID", "imaClientId", "input", "从 ima agent-interface 获取", "wide", true)}
         ${field("API Key", "imaKey", "input", "从 ima agent-interface 获取", "wide", true)}
         <button class="btn primary wide" type="submit">保存绑定</button>
         <div class="field wide">
@@ -730,25 +731,45 @@ function renderIma() {
           <textarea id="imaQuery" class="textarea">帮我查询 SuperMap iPortal 在资源注册、检索、授权和共享方面的能力。</textarea>
         </div>
         <button class="btn wide" type="button" onclick="testIma()">测试 ima 调用</button>
+        <button class="btn wide" type="button" onclick="syncImaSubscriptions()">同步订阅库</button>
       </form>
       <div class="panel span-7">
         <div class="panel-title"><div><h3>状态与能力</h3><p>按 ima Skill API Key 方式接入</p></div></div>
         <div class="list">
           <div class="list-item"><b>状态</b><div class="muted">${state.ima?.bound ? "已绑定" : "未绑定"}</div></div>
           <div class="list-item"><b>绑定账号</b><div class="muted">${escapeHtml(state.ima?.binding?.bound_account || "-")}</div></div>
+          <div class="list-item"><b>Client ID</b><div class="muted">${escapeHtml(state.ima?.binding?.clientIdMasked || "未配置")}</div></div>
           <div class="list-item"><b>API Key</b><div class="muted">${escapeHtml(state.ima?.binding?.apiKeyMasked || "未配置")}</div></div>
           <div class="list-item"><b>接入方式</b><div class="muted">${escapeHtml(state.ima?.integrationMode || "")}</div></div>
           <div class="list-item"><b>远端订阅库读取</b><div class="muted">${escapeHtml(state.ima?.remoteSubscriptionStatus?.message || "-")}</div></div>
+          <div class="list-item"><b>最近同步</b><div class="muted">${formatDate(state.ima?.syncSummary?.lastSyncedAt)} · ${state.ima?.syncSummary?.count || 0} 个库</div></div>
           <div class="list-item"><b>禁用来源</b><div class="muted">${state.ima?.disabledSources || ""}</div></div>
           ${(state.ima?.capabilities || []).map((x) => `<div class="list-item">${x}</div>`).join("")}
         </div>
-        <div class="panel-title subscriptions-title"><div><h3>知识库范围映射</h3><p>${escapeHtml(state.ima?.subscriptionSource || "本地维护的 ima 知识范围")}</p></div><button class="btn ghost" onclick="setView('knowledge')">新增范围</button></div>
+        <div class="panel-title subscriptions-title"><div><h3>ima 订阅库列表</h3><p>${escapeHtml(state.ima?.subscriptionSource || "ima OpenAPI 同步结果")}</p></div><button class="btn ghost" onclick="syncImaSubscriptions()">同步</button></div>
         <div class="list">
-          ${(state.ima?.subscriptions || []).map((s) => `<div class="list-item"><b>${escapeHtml(s.name)}</b><div class="muted">${escapeHtml(s.type)} · ${escapeHtml(s.status)} · ${escapeHtml(s.scope_prompt || "")}</div></div>`).join("") || `<div class="list-item muted">暂无订阅库</div>`}
+          ${(state.ima?.subscriptions || []).map(renderImaSubscription).join("") || `<div class="list-item muted">暂无订阅库，保存 Client ID / API Key 后点击同步。</div>`}
         </div>
         ${state.imaTestResult ? renderJsonResult("ima 测试结果", state.imaTestResult) : ""}
       </div>
     </section>
+  `;
+}
+
+function renderImaSubscription(s) {
+  const meta = [
+    s.base_type,
+    s.role_type,
+    s.content_count ? `${s.content_count} 条内容` : "",
+    s.member_count ? `${s.member_count} 成员` : "",
+    s.can_add ? "可添加" : "可检索",
+  ].filter(Boolean).join(" · ");
+  return `
+    <div class="list-item">
+      <b>${escapeHtml(s.name)}</b>
+      <div class="muted">${escapeHtml(meta || s.status || "")}</div>
+      <div class="muted tiny">ID: ${escapeHtml(s.id || s.external_id || "")}</div>
+    </div>
   `;
 }
 
@@ -804,11 +825,20 @@ async function submitIma(event) {
     method: "POST",
     body: JSON.stringify({
       apiKey: document.getElementById("imaKey").value,
+      clientId: document.getElementById("imaClientId").value,
       boundAccount: document.getElementById("imaAccount").value,
     }),
   });
   await setView("ima");
   toast("ima Skill 已绑定");
+}
+
+async function syncImaSubscriptions() {
+  const data = await request("/ima-skill/sync-subscriptions", { method: "POST" });
+  await loadBase();
+  state.imaTestResult = { summary: `已同步 ${data.syncedCount || 0} 个 ima 订阅库`, syncedCount: data.syncedCount };
+  renderApp();
+  toast(`已同步 ${data.syncedCount || 0} 个 ima 订阅库`);
 }
 
 async function testIma() {
@@ -837,8 +867,8 @@ function renderKnowledge() {
     ${header("知识范围", "只管理 ima 知识库范围，不接企业微信和本机文档。")}
     <section class="grid">
       <div class="panel span-8">
-        <div class="table-wrap"><table><thead><tr><th>名称</th><th>类型</th><th>归属</th><th>检索边界</th><th>状态</th></tr></thead><tbody>
-        ${state.knowledgeScopes.map((k) => `<tr><td>${escapeHtml(k.name)}</td><td>${escapeHtml(k.type)}</td><td>${escapeHtml(k.owner)}</td><td>${escapeHtml(k.scope_prompt)}</td><td>${k.enabled ? '<span class="chip ok">启用</span>' : '<span class="chip">停用</span>'}</td></tr>`).join("")}
+        <div class="table-wrap"><table><thead><tr><th>名称</th><th>类型</th><th>来源</th><th>归属</th><th>检索边界</th><th>状态</th></tr></thead><tbody>
+        ${state.knowledgeScopes.map((k) => `<tr><td>${escapeHtml(k.name)}${k.external_id ? `<div class="muted tiny">${escapeHtml(k.external_id)}</div>` : ""}</td><td>${escapeHtml(k.type)}</td><td>${escapeHtml(k.source || "MANUAL")}</td><td>${escapeHtml(k.owner)}</td><td>${escapeHtml(k.scope_prompt)}</td><td>${k.enabled ? '<span class="chip ok">启用</span>' : '<span class="chip">停用</span>'}</td></tr>`).join("")}
         </tbody></table></div>
       </div>
       <form class="panel form span-4" onsubmit="submitKnowledge(event)">
