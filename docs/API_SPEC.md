@@ -63,6 +63,10 @@ Request:
 
 更新模型配置。
 
+### DELETE /model-profiles/{id}
+
+删除模型配置。若项目或 Agent 运行记录引用该模型，删除前会解除引用。
+
 ### POST /model-profiles/{id}/test
 
 使用已保存的 API Key 调用 OpenAI-compatible `/chat/completions`，验证该模型配置是否可用。
@@ -80,6 +84,10 @@ Request:
 ### GET /ima-skill
 
 查看绑定状态、能力开关和知识范围。
+
+### GET /ima-skill/subscriptions
+
+查看当前识别到的 ima 订阅库/知识范围列表。V1 以 `knowledge_scopes` 作为页面可选订阅库，后续若 ima 提供明确订阅库 REST 协议，可替换为真实远端列表同步。
 
 ### POST /ima-skill/bind
 
@@ -150,6 +158,14 @@ Request:
 
 运行指定 Agent。
 
+Request:
+
+```json
+{
+  "modelProfileId": "可选，指定本次执行使用的大模型配置"
+}
+```
+
 skillCode:
 
 - `requirement`
@@ -159,3 +175,13 @@ skillCode:
 - `proposal`
 - `ppt`
 - `qa`
+
+## Agent Skills
+
+### GET /skills
+
+查询 Agent Skill 配置。
+
+### PUT /skills/{id}
+
+更新 Skill 名称、说明、Prompt、工具策略和启停状态。

@@ -14,6 +14,8 @@ const state = {
   ima: null,
   imaTestResult: null,
   modelTestResult: null,
+  editingModelId: null,
+  editingSkillId: null,
   knowledgeScopes: [],
   skills: [],
 };
@@ -166,6 +168,7 @@ function renderApp() {
           ${isAdmin() ? nav("users", "用户权限") : ""}
           ${isAdmin() ? nav("models", "大模型配置") : ""}
           ${isAdmin() ? nav("ima", "ima Skill") : ""}
+          ${isAdmin() ? nav("skills", "Agent Skills") : ""}
           ${isAdmin() ? nav("knowledge", "知识范围") : ""}
         </nav>
         <button class="btn ghost dark-button" onclick="logout()">退出登录</button>
@@ -198,6 +201,7 @@ function renderView() {
   if (state.view === "users") return isAdmin() ? renderUsers() : noAccess();
   if (state.view === "models") return isAdmin() ? renderModels() : noAccess();
   if (state.view === "ima") return isAdmin() ? renderIma() : noAccess();
+  if (state.view === "skills") return isAdmin() ? renderSkills() : noAccess();
   if (state.view === "knowledge") return isAdmin() ? renderKnowledge() : noAccess();
   return renderDashboard();
 }
@@ -341,6 +345,12 @@ function renderProjectManage() {
     <section class="workspace">
       <aside class="panel steps">
         <div class="panel-title"><div><h3>Agent 流程</h3><p>单步运行或一键串联</p></div></div>
+        <div class="field run-model">
+          <label>本次执行模型</label>
+          <select id="workspaceModelProfileId" class="select">
+            ${state.modelProfiles.map((m) => `<option value="${m.id}" ${String(m.id) === String(p.model_profile_id || "") ? "selected" : ""}>${escapeHtml(m.name)} · ${escapeHtml(m.model_name)} · ${m.status}</option>`).join("")}
+          </select>
+        </div>
         ${workflowSteps.map((s) => renderStepButton(p, s)).join("")}
       </aside>
       <section class="panel">
@@ -521,14 +531,20 @@ async function deleteProject(id, name) {
 }
 
 async function runAgent(projectId, skill) {
-  await request(`/projects/${projectId}/agents/${skill}/run`, { method: "POST" });
+  await request(`/projects/${projectId}/agents/${skill}/run`, {
+    method: "POST",
+    body: JSON.stringify({ modelProfileId: document.getElementById("workspaceModelProfileId")?.value || null }),
+  });
   await openProject(projectId);
   toast(`${stepLabel(skill)} 已运行`);
 }
 
 async function runPipeline(projectId) {
   for (const step of workflowSteps) {
-    await request(`/projects/${projectId}/agents/${step.code}/run`, { method: "POST" });
+    await request(`/projects/${projectId}/agents/${step.code}/run`, {
+      method: "POST",
+      body: JSON.stringify({ modelProfileId: document.getElementById("workspaceModelProfileId")?.value || null }),
+    });
   }
   await openProject(projectId);
   toast("流程已串联跑通");
@@ -589,6 +605,7 @@ async function updateUserRole(id, roleCode) {
 }
 
 function renderModels() {
+  const editing = state.modelProfiles.find((m) => String(m.id) === String(state.editingModelId));
   return `
     ${header("大模型配置", "配置 OpenAI-compatible 模型，后续供 Agent 调用。")}
     <section class="grid">
@@ -598,20 +615,21 @@ function renderModels() {
           <label>业务场景测试 Prompt</label>
           <textarea id="modelTestPrompt" class="textarea">你是 GIS 解决方案助手。请用三句话给出“自然资源一张图平台”的方案价值、核心能力和交付注意事项。</textarea>
         </div>
-        <div class="table-wrap model-table"><table><thead><tr><th>名称</th><th>供应商</th><th>模型</th><th>API Base</th><th>用途</th><th>状态</th><th>测试</th></tr></thead><tbody>
-        ${state.modelProfiles.map((m) => `<tr><td>${escapeHtml(m.name)}</td><td>${escapeHtml(m.provider_name)}</td><td>${escapeHtml(m.model_name)}</td><td>${escapeHtml(m.api_base)}</td><td>${escapeHtml(m.use_for || "")}</td><td><span class="chip ${m.status === "READY" ? "ok" : m.status === "ERROR" ? "danger-chip" : "warn"}">${m.status}</span></td><td><button class="btn small" onclick="testModel('${m.id}')">测试调用</button></td></tr>`).join("")}
+        <div class="table-wrap model-table"><table><thead><tr><th>名称</th><th>供应商</th><th>模型</th><th>API Base</th><th>用途</th><th>Key</th><th>状态</th><th>操作</th></tr></thead><tbody>
+        ${state.modelProfiles.map((m) => `<tr><td>${escapeHtml(m.name)}</td><td>${escapeHtml(m.provider_name)}</td><td>${escapeHtml(m.model_name)}</td><td>${escapeHtml(m.api_base)}</td><td>${escapeHtml(m.use_for || "")}</td><td>${m.api_key_configured ? '<span class="chip ok">已配置</span>' : '<span class="chip warn">未配置</span>'}</td><td><span class="chip ${m.status === "READY" ? "ok" : m.status === "ERROR" ? "danger-chip" : "warn"}">${m.status}</span></td><td><div class="toolbar"><button class="btn small" onclick="testModel('${m.id}')">测试</button><button class="btn small ghost" onclick="editModel('${m.id}')">编辑</button><button class="btn small danger" onclick="deleteModel('${m.id}', '${escapeAttr(m.name)}')">删除</button></div></td></tr>`).join("")}
         </tbody></table></div>
         ${state.modelTestResult ? renderJsonResult("模型测试结果", state.modelTestResult) : ""}
       </div>
       <form class="panel form span-4" onsubmit="submitModel(event)">
-        <div class="panel-title wide"><div><h3>新增模型</h3><p>API Key 后端会加密占位保存</p></div></div>
-        ${selectField("供应商", "modelProvider", state.modelProviders.map((p) => [p.code, p.name]))}
-        ${field("配置名称", "modelName", "input", "如：默认方案模型", "wide", true)}
-        ${field("模型名", "modelModelName", "input", "如：gpt-4.1 / qwen-max", "wide", true)}
-        ${field("API Base", "modelApiBase", "input", "https://api.openai.com/v1", "wide", true)}
+        <div class="panel-title wide"><div><h3>${editing ? "编辑模型" : "新增模型"}</h3><p>API Key 后端会加密占位保存，留空则沿用旧 Key</p></div></div>
+        ${selectField("供应商", "modelProvider", state.modelProviders.map((p) => [p.code, p.name]), editing?.provider_code)}
+        ${field("配置名称", "modelName", "input", "如：默认方案模型", "wide", true, editing?.name)}
+        ${field("模型名", "modelModelName", "input", "如：deepseek-chat / qwen-max", "wide", true, editing?.model_name)}
+        ${field("API Base", "modelApiBase", "input", "https://api.deepseek.com", "wide", true, editing?.api_base)}
         ${field("API Key", "modelApiKey", "input", "可先留空", "wide")}
-        ${field("用途", "modelUseFor", "input", "复杂推理、方案正文、质检", "wide")}
-        <button class="btn primary wide" type="submit">保存模型</button>
+        ${field("用途", "modelUseFor", "input", "复杂推理、方案正文、质检", "wide", false, editing?.use_for)}
+        <button class="btn primary wide" type="submit">${editing ? "保存修改" : "保存模型"}</button>
+        ${editing ? `<button class="btn ghost wide" type="button" onclick="cancelModelEdit()">取消编辑</button>` : ""}
       </form>
     </section>
   `;
@@ -619,9 +637,7 @@ function renderModels() {
 
 async function submitModel(event) {
   event.preventDefault();
-  await request("/model-profiles", {
-    method: "POST",
-    body: JSON.stringify({
+  const payload = {
       providerCode: document.getElementById("modelProvider").value,
       name: document.getElementById("modelName").value,
       modelName: document.getElementById("modelModelName").value,
@@ -629,10 +645,32 @@ async function submitModel(event) {
       apiKey: document.getElementById("modelApiKey").value,
       useFor: document.getElementById("modelUseFor").value,
       status: "PENDING",
-    }),
+    };
+  await request(state.editingModelId ? `/model-profiles/${state.editingModelId}` : "/model-profiles", {
+    method: state.editingModelId ? "PUT" : "POST",
+    body: JSON.stringify(payload),
   });
+  state.editingModelId = null;
   await setView("models");
   toast("模型配置已保存");
+}
+
+function editModel(id) {
+  state.editingModelId = id;
+  renderApp();
+}
+
+function cancelModelEdit() {
+  state.editingModelId = null;
+  renderApp();
+}
+
+async function deleteModel(id, name) {
+  if (!confirm(`确认删除模型配置「${name}」？`)) return;
+  await request(`/model-profiles/${id}`, { method: "DELETE" });
+  state.editingModelId = null;
+  await setView("models");
+  toast("模型配置已删除");
 }
 
 async function testModel(id) {
@@ -677,10 +715,60 @@ function renderIma() {
           <div class="list-item"><b>禁用来源</b><div class="muted">${state.ima?.disabledSources || ""}</div></div>
           ${(state.ima?.capabilities || []).map((x) => `<div class="list-item">${x}</div>`).join("")}
         </div>
+        <div class="panel-title subscriptions-title"><div><h3>订阅库列表</h3><p>当前从 ima 配置和知识范围识别到的可用订阅库</p></div></div>
+        <div class="list">
+          ${(state.ima?.subscriptions || []).map((s) => `<div class="list-item"><b>${escapeHtml(s.name)}</b><div class="muted">${escapeHtml(s.type)} · ${escapeHtml(s.status)} · ${escapeHtml(s.scope_prompt || "")}</div></div>`).join("") || `<div class="list-item muted">暂无订阅库</div>`}
+        </div>
         ${state.imaTestResult ? renderJsonResult("ima 测试结果", state.imaTestResult) : ""}
       </div>
     </section>
   `;
+}
+
+function renderSkills() {
+  const editing = state.skills.find((s) => String(s.id) === String(state.editingSkillId)) || state.skills[0];
+  const toolPolicyText = typeof editing?.tool_policy_json === "string" ? editing.tool_policy_json : JSON.stringify(editing?.tool_policy_json || {}, null, 2);
+  return `
+    ${header("Agent Skill 管理", "配置工作台流程中每个 Agent 的名称、Prompt、工具策略和启停状态。")}
+    <section class="grid">
+      <div class="panel span-5">
+        <div class="panel-title"><div><h3>Skill 列表</h3><p>${state.skills.length} 个流程节点</p></div></div>
+        <div class="list">
+          ${state.skills.map((s) => `<button class="list-item skill-item ${String(s.id) === String(editing?.id) ? "active-skill" : ""}" onclick="editSkill('${s.id}')"><b>${escapeHtml(s.name)}</b><span class="muted">${escapeHtml(s.code)} · ${s.enabled ? "启用" : "停用"}</span></button>`).join("")}
+        </div>
+      </div>
+      <form class="panel form span-7" onsubmit="submitSkill(event, '${editing?.id || ""}')">
+        <div class="panel-title wide"><div><h3>${escapeHtml(editing?.name || "选择 Skill")}</h3><p>${escapeHtml(editing?.code || "")}</p></div></div>
+        ${field("名称", "skillName", "input", "Skill 名称", "wide", true, editing?.name)}
+        ${field("说明", "skillDescription", "textarea", "Skill 说明", "wide", false, editing?.description)}
+        ${field("Prompt 模板", "skillPrompt", "textarea", "工作台执行时会拼接项目上下文", "wide", true, editing?.prompt_template)}
+        ${field("工具策略 JSON", "skillToolPolicy", "textarea", "{\"knowledge\":true}", "wide", false, toolPolicyText)}
+        <label class="check-pill wide"><input id="skillEnabled" type="checkbox" ${editing?.enabled ? "checked" : ""} />启用该 Skill</label>
+        <button class="btn primary wide" type="submit">保存 Skill 配置</button>
+      </form>
+    </section>
+  `;
+}
+
+function editSkill(id) {
+  state.editingSkillId = id;
+  renderApp();
+}
+
+async function submitSkill(event, id) {
+  event.preventDefault();
+  await request(`/skills/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      name: document.getElementById("skillName").value,
+      description: document.getElementById("skillDescription").value,
+      promptTemplate: document.getElementById("skillPrompt").value,
+      toolPolicyJson: document.getElementById("skillToolPolicy").value,
+      enabled: document.getElementById("skillEnabled").checked,
+    }),
+  });
+  await setView("skills");
+  toast("Skill 配置已保存");
 }
 
 async function submitIma(event) {

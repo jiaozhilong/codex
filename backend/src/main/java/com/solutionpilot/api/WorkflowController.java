@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -19,7 +20,23 @@ public class WorkflowController {
   }
 
   @PostMapping("/{skillCode}/run")
-  public ApiResponse<Map<String, Object>> runAgent(@PathVariable UUID projectId, @PathVariable String skillCode) {
-    return ApiResponse.ok(workflowService.runAgent(projectId, skillCode));
+  public ApiResponse<Map<String, Object>> runAgent(
+      @PathVariable UUID projectId,
+      @PathVariable String skillCode,
+      @RequestBody(required = false) RunAgentRequest request
+  ) {
+    return ApiResponse.ok(workflowService.runAgent(projectId, skillCode, request == null ? null : request.getModelProfileId()));
+  }
+
+  public static class RunAgentRequest {
+    private UUID modelProfileId;
+
+    public UUID getModelProfileId() {
+      return modelProfileId;
+    }
+
+    public void setModelProfileId(UUID modelProfileId) {
+      this.modelProfileId = modelProfileId;
+    }
   }
 }

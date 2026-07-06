@@ -31,6 +31,7 @@ public class ModelProfileService {
   public List<Map<String, Object>> listProfiles() {
     return jdbcTemplate.queryForList(
         "select mp.id, mp.name, mp.model_name, mp.api_base, mp.use_for, mp.status, " +
+            "mp.api_key_encrypted is not null as api_key_configured, " +
             "p.id as provider_id, p.code as provider_code, p.name as provider_name " +
             "from model_profiles mp join model_providers p on p.id = mp.provider_id order by mp.created_at"
     );
@@ -89,7 +90,26 @@ public class ModelProfileService {
     );
   }
 
+  public void deleteProfile(UUID id) {
+    jdbcTemplate.update("update projects set model_profile_id = null, updated_at = now() where model_profile_id = ?", id);
+    jdbcTemplate.update("update agent_runs set model_profile_id = null where model_profile_id = ?", id);
+    jdbcTemplate.update("delete from model_profiles where id = ?", id);
+  }
+
   public Map<String, Object> testProfile(UUID id, String prompt) {
+    try {
+      Map<String, Object> result = chat(id, prompt == null || prompt.isBlank()
+          ? "用一句中文说明你已经可以用于 SolutionPilot 方案生成。"
+          : prompt);
+      jdbcTemplate.update("update model_profiles set status = 'READY', updated_at = now() where id = ?", id);
+      return result;
+    } catch (Exception ex) {
+      jdbcTemplate.update("update model_profiles set status = 'ERROR', updated_at = now() where id = ?", id);
+      throw new IllegalStateException("Model test failed: " + ex.getMessage(), ex);
+    }
+  }
+
+  public Map<String, Object> chat(UUID id, String prompt) {
     Map<String, Object> profile = jdbcTemplate.queryForMap(
         "select mp.id, mp.name, mp.model_name, mp.api_base, mp.api_key_encrypted, p.code as provider_code " +
             "from model_profiles mp join model_providers p on p.id = mp.provider_id where mp.id = ?",
@@ -101,9 +121,7 @@ public class ModelProfileService {
     }
     String apiBase = String.valueOf(profile.get("api_base"));
     String endpoint = chatCompletionsEndpoint(apiBase);
-    String userPrompt = prompt == null || prompt.isBlank()
-        ? "用一句中文说明你已经可以用于 SolutionPilot 方案生成。"
-        : prompt;
+    String userPrompt = prompt == null || prompt.isBlank() ? "请返回 OK。" : prompt;
     try {
       Map<String, Object> message = new LinkedHashMap<>();
       message.put("role", "user");
@@ -133,14 +151,12 @@ public class ModelProfileService {
         JsonNode json = objectMapper.readTree(response.body());
         JsonNode content = json.path("choices").path(0).path("message").path("content");
         result.put("answer", content.isMissingNode() ? response.body() : content.asText());
-        jdbcTemplate.update("update model_profiles set status = 'READY', updated_at = now() where id = ?", id);
       } else {
-        jdbcTemplate.update("update model_profiles set status = 'ERROR', updated_at = now() where id = ?", id);
+        result.put("answer", response.body());
       }
       return result;
     } catch (Exception ex) {
-      jdbcTemplate.update("update model_profiles set status = 'ERROR', updated_at = now() where id = ?", id);
-      throw new IllegalStateException("Model test failed: " + ex.getMessage(), ex);
+      throw new IllegalStateException(ex.getMessage(), ex);
     }
   }
 

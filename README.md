@@ -65,8 +65,10 @@ user@example.com / user
 - `GET /api/model-profiles`
 - `POST /api/model-profiles`
 - `PUT /api/model-profiles/{id}`
+- `DELETE /api/model-profiles/{id}`
 - `POST /api/model-profiles/{id}/test`
 - `GET /api/ima-skill`
+- `GET /api/ima-skill/subscriptions`
 - `POST /api/ima-skill/bind`
 - `POST /api/ima-skill/test-search`
 - `GET /api/knowledge-scopes`
@@ -75,6 +77,10 @@ user@example.com / user
 - `GET /api/projects`
 - `POST /api/projects`
 - `GET /api/projects/{id}`
+- `PUT /api/projects/{id}`
+- `DELETE /api/projects/{id}`
+- `GET /api/skills`
+- `PUT /api/skills/{id}`
 - `POST /api/projects/{projectId}/agents/{skillCode}/run`
 
 ## V1 Usable Scope
@@ -84,12 +90,14 @@ user@example.com / user
 - 可管理用户，角色为“管理员”和“牛马专用”
 - 可查看项目列表、搜索筛选、进入项目工作台、新建/编辑/删除项目
 - 可维护模型配置、ima Skill 绑定、ima 知识范围
-- 可在项目工作台中单步运行或一键串联运行 mock Agent
-- mock Agent 会写入需求分析、产品匹配、案例、架构、方案章节、PPT 页面等业务表
+- 可在项目工作台中选择已配置大模型，单步运行或一键串联运行 Agent
+- 可维护 Agent Skill 的 Prompt、工具策略和启停状态
+- 可查看 ima 订阅库列表，并在项目中选择知识范围
+- Agent 会写入需求分析、产品匹配、案例、架构、方案章节、PPT 页面等业务表
 
 待接入：
 
-- ima Skill 在支持 skill 的模型环境内真实执行检索
+- ima Skill 在支持 skill 的模型环境内真实执行检索；V1 页面展示已配置订阅库范围和 endpoint probe
 - 更多模型供应商的响应格式兼容
 - Word/PPT 模板导出
 

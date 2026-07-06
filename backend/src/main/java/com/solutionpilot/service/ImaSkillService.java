@@ -43,7 +43,19 @@ public class ImaSkillService {
     payload.put("disabledSources", "wecom knowledge community, local desktop documents, cloud drive direct access");
     payload.put("integrationMode", "ima Skill API Key. Public docs describe binding the key to an ima account and invoking the skill from a model/tool environment; no stable public REST search contract is documented.");
     payload.put("capabilities", capabilities());
+    payload.put("subscriptions", subscriptions());
     return payload;
+  }
+
+  public List<Map<String, Object>> subscriptions() {
+    List<Map<String, Object>> scopes = jdbcTemplate.queryForList(
+        "select id, name, type, owner, scope_prompt, enabled, last_verified_at, updated_at from knowledge_scopes order by enabled desc, name"
+    );
+    for (Map<String, Object> scope : scopes) {
+      scope.put("source", "ima_skill_configured_scope");
+      scope.put("status", Boolean.TRUE.equals(scope.get("enabled")) ? "AVAILABLE" : "DISABLED");
+    }
+    return scopes;
   }
 
   public Map<String, Object> bind(String apiKey, String boundAccount) {

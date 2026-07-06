@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.UUID;
 import javax.validation.Valid;
 import javax.validation.constraints.NotBlank;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -44,6 +45,12 @@ public class ModelProfileController {
   public ApiResponse<String> updateProfile(@PathVariable UUID id, @Valid @RequestBody ModelProfileRequest request) {
     modelProfileService.updateProfile(id, request.toCommand());
     return ApiResponse.ok("updated");
+  }
+
+  @DeleteMapping("/model-profiles/{id}")
+  public ApiResponse<String> deleteProfile(@PathVariable UUID id) {
+    modelProfileService.deleteProfile(id);
+    return ApiResponse.ok("deleted");
   }
 
   @PostMapping("/model-profiles/{id}/test")

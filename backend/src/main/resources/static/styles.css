@@ -608,6 +608,27 @@ th {
   font-size: 15px;
 }
 
+.run-model {
+  margin-bottom: 12px;
+}
+
+.subscriptions-title {
+  margin-top: 18px;
+}
+
+.skill-item {
+  width: 100%;
+  display: grid;
+  gap: 4px;
+  color: var(--ink);
+  text-align: left;
+}
+
+.active-skill {
+  border-color: var(--brand);
+  background: #eff6ff;
+}
+
 pre {
   max-width: 100%;
   overflow: auto;

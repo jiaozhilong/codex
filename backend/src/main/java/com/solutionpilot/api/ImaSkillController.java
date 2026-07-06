@@ -25,6 +25,11 @@ public class ImaSkillController {
     return ApiResponse.ok(imaSkillService.status());
   }
 
+  @GetMapping("/subscriptions")
+  public ApiResponse<Object> subscriptions() {
+    return ApiResponse.ok(imaSkillService.subscriptions());
+  }
+
   @PostMapping("/test-search")
   public ApiResponse<Map<String, Object>> testSearch(@Valid @RequestBody TestSearchRequest request) {
     return ApiResponse.ok(imaSkillService.testSearch(request.getQuery()));

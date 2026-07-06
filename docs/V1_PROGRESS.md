@@ -26,6 +26,9 @@
 - 配置联调：
   - 大模型配置支持 OpenAI-compatible `/chat/completions` 实际调用测试
   - ima Skill 支持账号/API Key 保存、调用指令生成和 endpoint probe
+  - ima Skill 页面展示当前订阅库/知识范围列表
+  - 大模型配置支持编辑、删除和测试状态展示
+  - Agent Skill 支持 Prompt、工具策略和启停配置
 - 角色：
   - 管理员
   - 牛马专用
@@ -41,9 +44,10 @@
   - 删除项目并级联清理关联资产
 - 项目工作台：
   - 单步运行 Agent
+  - 选择已配置大模型执行 Agent
   - 一键串联运行需求分析、产品匹配、案例推荐、架构设计、方案章节、PPT 页面、方案质检
   - 查看各类 Agent 产出
-- Agent mock 落表：
+- Agent 落表：
   - Requirement Agent -> `requirement_analyses`
   - Product Agent -> `product_matches` + `citations`
   - Case Agent -> `case_matches` + `citations`
@@ -89,12 +93,15 @@ V3 rename USER to WORKER / 牛马专用: success
   "pptPages": 2,
   "modelConfigTest": "success with local OpenAI-compatible mock",
   "imaConfigTest": "configured + endpoint probe attempted",
+  "imaSubscriptions": 3,
+  "skillConfigTest": "success",
+  "workflowModelExecution": "success with configured DeepSeek model",
   "htmlOk": true
 }
 ```
 
 ## 下一步
 
-- 把 mock Agent 输出替换为 `SkillRegistry + ModelProviderAdapter`
-- Product Agent 接入已配置模型和 `KnowledgeService -> ima Skill`
+- 引入更严格的结构化输出解析，减少模型自由文本对资产表字段的影响
+- Product Agent 接入真实 `KnowledgeService -> ima Skill` 结果解析
 - 增加 Word/PPT 导出任务骨架
