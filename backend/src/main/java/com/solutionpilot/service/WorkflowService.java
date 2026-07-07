@@ -32,7 +32,7 @@ public class WorkflowService {
         adminId
     );
     Map<String, Object> skill = jdbcTemplate.queryForMap(
-        "select id, code, name, prompt_template, tool_policy_json, enabled from agent_skills where code = ?",
+        "select id, code, name, output_type, prompt_template, tool_policy_json, enabled from agent_skills where code = ?",
         skillCode
     );
     if (!Boolean.TRUE.equals(skill.get("enabled"))) {
@@ -85,7 +85,7 @@ public class WorkflowService {
         json(output),
         errorMessage
     );
-    persistSkillOutput(project, agentRunId, skillCode, answer);
+    persistSkillOutput(project, agentRunId, skill, answer);
     jdbcTemplate.update("update workflow_runs set status = 'COMPLETED', finished_at = now() where id = ?", workflowRunId);
     jdbcTemplate.update("update projects set status = 'GENERATED', progress = least(progress + 12, 100), updated_at = now() where id = ?", projectId);
 
@@ -116,9 +116,11 @@ public class WorkflowService {
         + "输出要求：使用中文，给出条目化结果，保留能进入方案正文的描述。";
   }
 
-  private void persistSkillOutput(Map<String, Object> project, UUID agentRunId, String skillCode, String answer) {
+  private void persistSkillOutput(Map<String, Object> project, UUID agentRunId, Map<String, Object> skill, String answer) {
     UUID projectId = (UUID) project.get("id");
-    if ("requirement".equals(skillCode)) {
+    String skillCode = value(skill, "code");
+    String outputType = value(skill, "output_type");
+    if ("requirement".equals(skillCode) || "REQUIREMENT".equals(outputType)) {
       jdbcTemplate.update(
           "insert into requirement_analyses(project_id, agent_run_id, content_json) values (?, ?, ?::jsonb)",
           projectId,
@@ -132,7 +134,7 @@ public class WorkflowService {
       );
       return;
     }
-    if ("product".equals(skillCode)) {
+    if ("product".equals(skillCode) || "PRODUCT".equals(outputType)) {
       UUID citationId = insertCitation(projectId, agentRunId, "ima 订阅库 / 产品能力检索", "ima://subscriptions/products", answer, 0.8200);
       jdbcTemplate.update(
           "insert into product_matches(project_id, agent_run_id, requirement_text, product_name, module_name, capability, confidence, adopted, citation_id) " +
@@ -145,7 +147,7 @@ public class WorkflowService {
       );
       return;
     }
-    if ("case".equals(skillCode)) {
+    if ("case".equals(skillCode) || "CASE".equals(outputType)) {
       UUID citationId = insertCitation(projectId, agentRunId, "ima 订阅库 / 历史方案案例", "ima://subscriptions/cases", answer, 0.7800);
       jdbcTemplate.update(
           "insert into case_matches(project_id, agent_run_id, case_name, industry, similarity_reason, reference_content, adopted, citation_id) " +
@@ -160,7 +162,7 @@ public class WorkflowService {
       );
       return;
     }
-    if ("architecture".equals(skillCode)) {
+    if ("architecture".equals(skillCode) || "ARCHITECTURE".equals(outputType)) {
       jdbcTemplate.update(
           "insert into architectures(project_id, agent_run_id, content_json, mermaid_text) values (?, ?, ?::jsonb, ?)",
           projectId,
@@ -170,7 +172,7 @@ public class WorkflowService {
       );
       return;
     }
-    if ("proposal".equals(skillCode)) {
+    if ("proposal".equals(skillCode) || "PROPOSAL".equals(outputType)) {
       jdbcTemplate.update("delete from proposal_sections where project_id = ?", projectId);
       jdbcTemplate.update(
           "insert into proposal_sections(project_id, title, sort_order, content_markdown, status) values (?, '项目背景与建设目标', 1, ?, 'DRAFT')",
@@ -184,7 +186,7 @@ public class WorkflowService {
       );
       return;
     }
-    if ("ppt".equals(skillCode)) {
+    if ("ppt".equals(skillCode) || "PPT".equals(outputType)) {
       jdbcTemplate.update("delete from ppt_pages where project_id = ?", projectId);
       jdbcTemplate.update(
           "insert into ppt_pages(project_id, page_type, title, content_json, sort_order) values (?, 'COVER', ?, ?::jsonb, 1)",
@@ -199,9 +201,11 @@ public class WorkflowService {
       );
       return;
     }
-    if ("qa".equals(skillCode)) {
+    if ("qa".equals(skillCode) || "QA".equals(outputType)) {
       insertCitation(projectId, agentRunId, "方案质检记录", "system://qa", answer, 0.7000);
+      return;
     }
+    insertCitation(projectId, agentRunId, value(skill, "name") + " 任务产出", "system://task/" + skillCode, answer, 0.6500);
   }
 
   private UUID insertCitation(UUID projectId, UUID agentRunId, String title, String uri, String snippet, double confidence) {
@@ -239,7 +243,7 @@ public class WorkflowService {
     if ("ppt".equals(skillCode)) {
       return "PPT 建议包含封面、现状痛点、建设目标、总体架构、核心能力、实施路径、项目价值和风险保障。";
     }
-    return "质检建议重点检查需求覆盖、产品依据、实施边界、数据安全和交付验收标准。";
+    return "已完成自定义任务「" + skillCode + "」。建议围绕客户目标、当前问题、可执行动作、依赖条件和交付物验收标准输出任务结果。";
   }
 
   private String value(Map<String, Object> map, String key) {

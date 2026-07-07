@@ -20,15 +20,42 @@ const state = {
   skills: [],
 };
 
-const workflowSteps = [
-  { code: "requirement", label: "需求分析", owner: "Requirement Agent", asset: "requirementAnalyses" },
-  { code: "product", label: "产品匹配", owner: "Product Agent", asset: "productMatches" },
-  { code: "case", label: "案例推荐", owner: "Case Agent", asset: "caseMatches" },
-  { code: "architecture", label: "架构设计", owner: "Architecture Agent", asset: "architectures" },
-  { code: "proposal", label: "方案章节", owner: "Proposal Agent", asset: "proposalSections" },
-  { code: "ppt", label: "PPT 页面", owner: "PPT Agent", asset: "pptPages" },
-  { code: "qa", label: "方案质检", owner: "QA Agent", asset: "agentRuns" },
-];
+function workflowTasks() {
+  return state.skills
+    .filter((s) => s.enabled && (s.category || "WORKFLOW") === "WORKFLOW")
+    .sort((a, b) => Number(a.sort_order || 100) - Number(b.sort_order || 100))
+    .map((s) => ({
+      code: s.code,
+      label: s.name,
+      owner: s.description || s.code,
+      asset: assetKeyForOutput(s.output_type, s.code),
+      outputType: s.output_type || "GENERIC",
+    }));
+}
+
+function assetKeyForOutput(outputType, code) {
+  const map = {
+    REQUIREMENT: "requirementAnalyses",
+    PRODUCT: "productMatches",
+    CASE: "caseMatches",
+    ARCHITECTURE: "architectures",
+    PROPOSAL: "proposalSections",
+    PPT: "pptPages",
+    QA: "agentRuns",
+  };
+  return map[outputType] || (code === "qa" ? "agentRuns" : "agentRuns");
+}
+
+function parseMaybeJson(value, fallback = {}) {
+  if (!value) return fallback;
+  if (typeof value === "object" && typeof value.value === "string") return parseMaybeJson(value.value, fallback);
+  if (typeof value === "object") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
 
 async function request(path, options = {}) {
   const res = await fetch(api(path), {
@@ -234,7 +261,7 @@ function renderDashboard() {
       </div>
       <div class="panel span-5">
         <div class="panel-title"><div><h3>流程状态</h3><p>V1 可串联运行的 Agent</p></div></div>
-        <div class="list">${workflowSteps.map((s) => `<div class="list-item"><b>${s.label}</b><div class="muted">${s.owner}</div></div>`).join("")}</div>
+        <div class="list">${workflowTasks().map((s) => `<div class="list-item"><b>${escapeHtml(s.label)}</b><div class="muted">${escapeHtml(s.owner)}</div></div>`).join("") || `<div class="list-item muted">暂无启用任务。</div>`}</div>
       </div>
     </section>
   `;
@@ -351,7 +378,7 @@ function renderProjectManage() {
             ${state.modelProfiles.map((m) => `<option value="${m.id}" ${String(m.id) === String(p.model_profile_id || "") ? "selected" : ""}>${escapeHtml(m.name)} · ${escapeHtml(m.model_name)} · ${m.status}</option>`).join("")}
           </select>
         </div>
-        ${workflowSteps.map((s) => renderStepButton(p, s)).join("")}
+        ${workflowTasks().map((s) => renderStepButton(p, s)).join("") || `<p class="muted">暂无启用任务，请到 Agent Skills 新增或启用任务。</p>`}
       </aside>
       <section class="panel">
         <div class="panel-title"><div><h3>交付资产</h3><p>Agent 运行后写入 PostgreSQL 业务表</p></div></div>
@@ -382,13 +409,20 @@ function renderProjectManage() {
 }
 
 function renderStepButton(p, step) {
-  const count = Array.isArray(p[step.asset]) ? p[step.asset].length : 0;
+  const count = taskRunCount(p, step);
   return `
     <button class="step-button" onclick="runAgent('${p.id}', '${step.code}')">
       <span><b>${step.label}</b><small>${step.owner}</small></span>
       <em>${count > 0 ? "已产出" : "未运行"}</em>
     </button>
   `;
+}
+
+function taskRunCount(p, step) {
+  if (step.asset !== "agentRuns") {
+    return Array.isArray(p[step.asset]) ? p[step.asset].length : 0;
+  }
+  return (p.agentRuns || []).filter((run) => run.skill_code === step.code).length;
 }
 
 function asset(label, value) {
@@ -447,6 +481,25 @@ function renderProjectAssets(p) {
         <h3>PPT 页面</h3>
         <div class="list">${(p.pptPages || []).map((x) => `<div class="list-item"><b>${escapeHtml(x.title)}</b><div class="muted">${escapeHtml(x.page_type)}</div></div>`).join("") || `<p class="muted">尚未生成 PPT 页面。</p>`}</div>
       </section>
+      <section class="span-12 asset-run-log">
+        <h3>任务运行结果</h3>
+        <div class="list">${(p.agentRuns || []).map(renderAgentRun).join("") || `<p class="muted">尚未运行任务。</p>`}</div>
+      </section>
+    </div>
+  `;
+}
+
+function renderAgentRun(run) {
+  const output = parseMaybeJson(run.output_json);
+  return `
+    <div class="list-item run-output">
+      <div class="run-output-head">
+        <b>${escapeHtml(run.skill_name || run.skill_code)}</b>
+        <span class="chip ${run.status === "COMPLETED" ? "ok" : "warn"}">${escapeHtml(run.status)}</span>
+      </div>
+      <div class="muted">${escapeHtml(run.output_type || "GENERIC")} · ${formatDate(run.finished_at || run.started_at)}</div>
+      ${output.answer ? `<div class="run-answer">${escapeHtml(output.answer)}</div>` : ""}
+      ${run.error_message ? `<div class="muted">错误：${escapeHtml(run.error_message)}</div>` : ""}
     </div>
   `;
 }
@@ -566,7 +619,7 @@ async function runAgent(projectId, skill) {
 }
 
 async function runPipeline(projectId) {
-  for (const step of workflowSteps) {
+  for (const step of workflowTasks()) {
     await request(`/projects/${projectId}/agents/${step.code}/run`, {
       method: "POST",
       body: JSON.stringify({ modelProfileId: document.getElementById("workspaceModelProfileId")?.value || null }),
@@ -577,7 +630,7 @@ async function runPipeline(projectId) {
 }
 
 function stepLabel(code) {
-  return (workflowSteps.find((x) => x.code === code) || {}).label || code;
+  return (workflowTasks().find((x) => x.code === code) || state.skills.find((x) => x.code === code) || {}).name || code;
 }
 
 function renderUsers() {
@@ -777,22 +830,38 @@ function renderSkills() {
   const editing = state.skills.find((s) => String(s.id) === String(state.editingSkillId)) || state.skills[0];
   const toolPolicyText = typeof editing?.tool_policy_json === "string" ? editing.tool_policy_json : JSON.stringify(editing?.tool_policy_json || {}, null, 2);
   return `
-    ${header("Agent Skill 管理", "配置工作台流程中每个 Agent 的名称、Prompt、工具策略和启停状态。")}
+    ${header("Agent Skill 管理", "新增、配置、排序和停用工作台可执行任务。")}
     <section class="grid">
       <div class="panel span-5">
-        <div class="panel-title"><div><h3>Skill 列表</h3><p>${state.skills.length} 个流程节点</p></div></div>
+        <div class="panel-title"><div><h3>任务列表</h3><p>${state.skills.length} 个 Skill / 任务</p></div></div>
         <div class="list">
-          ${state.skills.map((s) => `<button class="list-item skill-item ${String(s.id) === String(editing?.id) ? "active-skill" : ""}" onclick="editSkill('${s.id}')"><b>${escapeHtml(s.name)}</b><span class="muted">${escapeHtml(s.code)} · ${s.enabled ? "启用" : "停用"}</span></button>`).join("")}
+          ${state.skills.map((s) => `<button class="list-item skill-item ${String(s.id) === String(editing?.id) ? "active-skill" : ""}" onclick="editSkill('${s.id}')"><b>${escapeHtml(s.name)}</b><span class="muted">${escapeHtml(s.code)} · ${escapeHtml(s.category || "WORKFLOW")} · ${escapeHtml(s.output_type || "GENERIC")} · ${s.enabled ? "启用" : "停用"}</span></button>`).join("")}
         </div>
       </div>
       <form class="panel form span-7" onsubmit="submitSkill(event, '${editing?.id || ""}')">
         <div class="panel-title wide"><div><h3>${escapeHtml(editing?.name || "选择 Skill")}</h3><p>${escapeHtml(editing?.code || "")}</p></div></div>
         ${field("名称", "skillName", "input", "Skill 名称", "wide", true, editing?.name)}
+        ${selectField("任务分类", "skillCategory", [["WORKFLOW", "工作台任务"], ["TOOL", "工具 Skill"]], editing?.category || "WORKFLOW")}
+        ${selectField("输出类型", "skillOutputType", [["GENERIC", "通用产出"], ["REQUIREMENT", "需求分析"], ["PRODUCT", "产品匹配"], ["CASE", "案例推荐"], ["ARCHITECTURE", "架构设计"], ["PROPOSAL", "方案章节"], ["PPT", "PPT 页面"], ["QA", "方案质检"], ["KNOWLEDGE", "知识工具"]], editing?.output_type || "GENERIC")}
+        ${field("排序", "skillSortOrder", "input", "10", "", false, editing?.sort_order ?? 100)}
         ${field("说明", "skillDescription", "textarea", "Skill 说明", "wide", false, editing?.description)}
         ${field("Prompt 模板", "skillPrompt", "textarea", "工作台执行时会拼接项目上下文", "wide", true, editing?.prompt_template)}
         ${field("工具策略 JSON", "skillToolPolicy", "textarea", "{\"knowledge\":true}", "wide", false, toolPolicyText)}
         <label class="check-pill wide"><input id="skillEnabled" type="checkbox" ${editing?.enabled ? "checked" : ""} />启用该 Skill</label>
         <button class="btn primary wide" type="submit">保存 Skill 配置</button>
+        <button class="btn danger wide" type="button" onclick="disableSkill('${editing?.id || ""}', '${escapeAttr(editing?.name || "")}')">停用该任务</button>
+      </form>
+      <form class="panel form span-12 task-create-panel" onsubmit="submitSkillCreate(event)">
+        <div class="panel-title wide"><div><h3>新增可执行任务</h3><p>新增后会按排序出现在项目工作台，可选择不同输出类型进入对应资产区。</p></div></div>
+        ${field("任务编码", "newSkillCode", "input", "如：competitor-analysis", "", true)}
+        ${field("任务名称", "newSkillName", "input", "如：竞品分析", "", true)}
+        ${selectField("任务分类", "newSkillCategory", [["WORKFLOW", "工作台任务"], ["TOOL", "工具 Skill"]], "WORKFLOW")}
+        ${selectField("输出类型", "newSkillOutputType", [["GENERIC", "通用产出"], ["REQUIREMENT", "需求分析"], ["PRODUCT", "产品匹配"], ["CASE", "案例推荐"], ["ARCHITECTURE", "架构设计"], ["PROPOSAL", "方案章节"], ["PPT", "PPT 页面"], ["QA", "方案质检"], ["KNOWLEDGE", "知识工具"]], "GENERIC")}
+        ${field("排序", "newSkillSortOrder", "input", "80", "", false, 80)}
+        ${field("说明", "newSkillDescription", "textarea", "这个任务解决什么问题", "wide", false)}
+        ${field("Prompt 模板", "newSkillPrompt", "textarea", "请基于项目上下文完成任务，输出结构化、可进入方案的内容。", "wide", true)}
+        ${field("工具策略 JSON", "newSkillToolPolicy", "textarea", "{\"knowledge\":true,\"citationRequired\":true}", "wide", false, "{\"knowledge\":true,\"citationRequired\":true}")}
+        <button class="btn primary wide" type="submit">新增任务</button>
       </form>
     </section>
   `;
@@ -807,16 +876,41 @@ async function submitSkill(event, id) {
   event.preventDefault();
   await request(`/skills/${id}`, {
     method: "PUT",
-    body: JSON.stringify({
-      name: document.getElementById("skillName").value,
-      description: document.getElementById("skillDescription").value,
-      promptTemplate: document.getElementById("skillPrompt").value,
-      toolPolicyJson: document.getElementById("skillToolPolicy").value,
-      enabled: document.getElementById("skillEnabled").checked,
-    }),
+    body: JSON.stringify(skillPayload("skill")),
   });
   await setView("skills");
   toast("Skill 配置已保存");
+}
+
+async function submitSkillCreate(event) {
+  event.preventDefault();
+  await request("/skills", {
+    method: "POST",
+    body: JSON.stringify(skillPayload("newSkill")),
+  });
+  await setView("skills");
+  toast("任务已新增");
+}
+
+async function disableSkill(id, name) {
+  if (!id || !confirm(`确认停用任务「${name}」？历史运行结果会保留。`)) return;
+  await request(`/skills/${id}`, { method: "DELETE" });
+  await setView("skills");
+  toast("任务已停用");
+}
+
+function skillPayload(prefix) {
+  return {
+    code: document.getElementById(`${prefix}Code`)?.value,
+    name: document.getElementById(`${prefix}Name`).value,
+    description: document.getElementById(`${prefix}Description`).value,
+    category: document.getElementById(`${prefix}Category`).value,
+    outputType: document.getElementById(`${prefix}OutputType`).value,
+    sortOrder: Number(document.getElementById(`${prefix}SortOrder`).value || 100),
+    promptTemplate: document.getElementById(`${prefix}Prompt`).value,
+    toolPolicyJson: document.getElementById(`${prefix}ToolPolicy`).value,
+    enabled: prefix === "skill" ? document.getElementById("skillEnabled").checked : true,
+  };
 }
 
 async function submitIma(event) {

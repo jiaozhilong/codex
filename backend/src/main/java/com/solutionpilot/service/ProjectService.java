@@ -39,7 +39,7 @@ public class ProjectService {
         id
     ));
     project.put("agentRuns", jdbcTemplate.queryForList(
-        "select ar.id, s.code as skill_code, s.name as skill_name, ar.status, ar.started_at, ar.finished_at " +
+        "select ar.id, s.code as skill_code, s.name as skill_name, s.output_type, ar.status, ar.output_json::text as output_json, ar.error_message, ar.started_at, ar.finished_at " +
             "from agent_runs ar join agent_skills s on s.id = ar.skill_id where ar.project_id = ? order by ar.started_at desc limit 20",
         id
     ));

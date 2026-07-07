@@ -8,7 +8,9 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -27,24 +29,55 @@ public class SkillController {
     return ApiResponse.ok(skillService.listSkills());
   }
 
+  @PostMapping
+  public ApiResponse<Map<String, Object>> createSkill(@RequestBody SkillRequest request) {
+    return ApiResponse.ok(skillService.createSkill(toCommand(request)));
+  }
+
   @PutMapping("/{id}")
   public ApiResponse<String> updateSkill(@PathVariable UUID id, @RequestBody SkillRequest request) {
-    SkillCommand command = new SkillCommand();
-    command.name = request.getName();
-    command.description = request.getDescription();
-    command.promptTemplate = request.getPromptTemplate();
-    command.toolPolicyJson = request.getToolPolicyJson();
-    command.enabled = request.isEnabled();
-    skillService.updateSkill(id, command);
+    skillService.updateSkill(id, toCommand(request));
     return ApiResponse.ok("updated");
   }
 
+  @DeleteMapping("/{id}")
+  public ApiResponse<String> disableSkill(@PathVariable UUID id) {
+    skillService.disableSkill(id);
+    return ApiResponse.ok("disabled");
+  }
+
+  private SkillCommand toCommand(SkillRequest request) {
+    SkillCommand command = new SkillCommand();
+    command.code = request.getCode();
+    command.name = request.getName();
+    command.description = request.getDescription();
+    command.category = request.getCategory();
+    command.outputType = request.getOutputType();
+    command.sortOrder = request.getSortOrder();
+    command.promptTemplate = request.getPromptTemplate();
+    command.toolPolicyJson = request.getToolPolicyJson();
+    command.enabled = request.isEnabled();
+    return command;
+  }
+
   public static class SkillRequest {
+    private String code;
     private String name;
     private String description;
+    private String category;
+    private String outputType;
+    private Integer sortOrder;
     private String promptTemplate;
     private String toolPolicyJson;
     private boolean enabled;
+
+    public String getCode() {
+      return code;
+    }
+
+    public void setCode(String code) {
+      this.code = code;
+    }
 
     public String getName() {
       return name;
@@ -60,6 +93,30 @@ public class SkillController {
 
     public void setDescription(String description) {
       this.description = description;
+    }
+
+    public String getCategory() {
+      return category;
+    }
+
+    public void setCategory(String category) {
+      this.category = category;
+    }
+
+    public String getOutputType() {
+      return outputType;
+    }
+
+    public void setOutputType(String outputType) {
+      this.outputType = outputType;
+    }
+
+    public Integer getSortOrder() {
+      return sortOrder;
+    }
+
+    public void setSortOrder(Integer sortOrder) {
+      this.sortOrder = sortOrder;
     }
 
     public String getPromptTemplate() {
